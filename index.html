@@ -29,9 +29,11 @@
       html, body {
         width: 100%; height: 100%; overflow: hidden;
         font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
-        background: #1a1a1a; color: #fff; touch-action: none;
+        background: #1a1a1a; color: #fff;
+        /* SafariでのデフォルトジェスチャーをiPad向けに個別制御 */
+        touch-action: manipulation;
       }
-      #viewport { position: fixed; inset: 0; overflow: hidden; }
+      #viewport { position: fixed; inset: 0; overflow: hidden; touch-action: none; }
       #canvas-area {
         position: absolute;
         top: 0; left: 0;
@@ -318,7 +320,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver0.69</div>
+    <div id="version-badge">ver0.70</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -862,6 +864,14 @@ self.addEventListener('fetch', function(e) {
         updateCursor();
       }, { passive: false });
 
+      // Safari/iPadでのページ全体スクロール・ズームを防止
+      document.addEventListener("touchmove", (e) => {
+        if (e.touches.length > 1) e.preventDefault();
+      }, { passive: false });
+      document.addEventListener("gesturestart", (e) => { e.preventDefault(); }, { passive: false });
+      document.addEventListener("gesturechange", (e) => { e.preventDefault(); }, { passive: false });
+      document.addEventListener("gestureend", (e) => { e.preventDefault(); }, { passive: false });
+
       // ── スタンプ配置 ──────────────────────────────────────────────────────
       function placeTapStamp(clientX, clientY) {
         const wrap = document.getElementById("canvas-wrap");
@@ -1027,6 +1037,7 @@ self.addEventListener('fetch', function(e) {
           const bytes = await pdfLibDoc.save();
           const blob  = new Blob([bytes], { type: "application/pdf" });
           if (window.Android) {
+            // Android ネイティブ経由で保存
             const reader = new FileReader();
             reader.onload = function() {
               const base64 = reader.result.split(',')[1];
@@ -1036,10 +1047,16 @@ self.addEventListener('fetch', function(e) {
           } else {
             const url = URL.createObjectURL(blob);
             const a   = document.createElement("a");
-            a.href = url; a.download = filename; a.style.display = "none";
+            a.href = url;
+            a.download = filename;
+            a.style.display = "none";
             document.body.appendChild(a);
             a.click();
-            setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+            // Safariでダウンロードが動作しない場合は新しいタブで開く
+            setTimeout(() => {
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }, 3000);
           }
           showToast("✅ " + filename + " を保存しました");
         } catch (err) {
