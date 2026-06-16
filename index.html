@@ -100,18 +100,18 @@
       }
       .tb-divider { width: 158px; height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; }
 
-      /* カウンターサークル — 1.5倍 (ツールバー174px幅に収まるよう154px) */
+      /* カウンターサークル — スウォッチと同サイズ 84px */
       #counter-wrap {
         display: flex; flex-direction: column; align-items: center;
-        gap: 6px; width: 100%; padding: 6px 0 2px; cursor: pointer;
+        gap: 4px; width: 100%; padding: 6px 0 2px; cursor: pointer;
       }
       #counter-circle {
-        width: 154px; height: 154px; border-radius: 50%; border: 4px solid var(--accent);
+        width: 84px; height: 84px; border-radius: 50%; border: 4px solid var(--accent);
         display: flex; align-items: center; justify-content: center;
         font-weight: 900; color: var(--accent); background: transparent;
-        font-size: 60px; transition: border-color 0.2s, color 0.2s; flex-shrink: 0;
+        font-size: 30px; transition: border-color 0.2s, color 0.2s; flex-shrink: 0;
       }
-      #counter-label { font-size: 14px; color: rgba(255,255,255,0.5); text-align: center; }
+      #counter-label { font-size: 12px; color: rgba(255,255,255,0.5); text-align: center; }
 
       /* ツールバーボタン — 幅158px (左右8pxずつパディング確保), 高さ80px */
       .tb-icon-btn {
@@ -131,10 +131,10 @@
       .tb-icon-btn.accent { background: var(--accent); color: #fff; }
       .tb-icon-btn.accent:active { background: var(--accent2); }
 
-      /* カラースウォッチ — 1.5倍 */
-      #palette-wrap { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 4px 8px; }
+      /* カラースウォッチ — 縦1列・84px */
+      #palette-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 4px 0; }
       .color-swatch {
-        width: 56px; height: 56px; border-radius: 50%; border: 4px solid transparent;
+        width: 84px; height: 84px; border-radius: 50%; border: 4px solid transparent;
         cursor: pointer; transition: transform 0.14s, border-color 0.14s, box-shadow 0.14s;
         -webkit-tap-highlight-color: transparent; flex-shrink: 0;
         display: flex; align-items: center; justify-content: center;
@@ -484,12 +484,12 @@ self.addEventListener('fetch', function(e) {
       })();
 
       function swatchFontSize(digits) {
-        const innerD   = 40; // 56px - 4px×2 border = 48px内径 → 余裕持って40
+        const innerD   = 68; // 84px - 4px×2 border = 76px内径 → 余裕持って68
         const byHeight = innerD * 0.82;
         const byWidth  = digits === 1 ? innerD * 0.72
                        : digits === 2 ? innerD * 0.72 / 1.7
                        :                innerD * 0.72 / 2.55;
-        return Math.max(8, Math.floor(Math.min(byHeight, byWidth)));
+        return Math.max(10, Math.floor(Math.min(byHeight, byWidth)));
       }
 
       function stampFRatio(digits) {
@@ -503,7 +503,7 @@ self.addEventListener('fetch', function(e) {
         circle.style.color       = currentColor;
         circle.textContent       = n;
         const digits = String(n).length;
-        circle.style.fontSize = digits >= 3 ? "42px" : digits === 2 ? "54px" : "68px";
+        circle.style.fontSize = digits >= 3 ? "22px" : digits === 2 ? "28px" : "36px";
         PALETTE.forEach(p => {
           const span = document.querySelector(`.swatch-num[data-swatch-color="${p.color}"]`);
           if (span) {
