@@ -22,8 +22,8 @@
         --accent2: #e74c3c;
         --toolbar-bg: rgba(20, 20, 20, 0.82);
         --toolbar-blur: blur(12px);
-        --right-w: 116px;
-        --bottom-h: 72px;
+        --right-w: 174px;   /* 116px × 1.5 */
+        --bottom-h: 144px;  /* 72px × 2 */
       }
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       html, body {
@@ -65,20 +65,24 @@
         box-shadow: 0 4px 20px rgba(192,57,43,0.5); -webkit-tap-highlight-color: transparent;
       }
       .btn-open-big:active { transform: scale(0.96); }
+
+      /* ── 右ツールバー (幅 174px = 116×1.5) ── */
       #toolbar-right {
         position: fixed; right: 0; top: 0; bottom: var(--bottom-h); width: var(--right-w);
         background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
         -webkit-backdrop-filter: var(--toolbar-blur);
         display: flex; flex-direction: column; align-items: center;
-        padding: 10px 0; gap: 6px; z-index: 100;
+        padding: 12px 0; gap: 8px; z-index: 100;
         border-left: 1px solid rgba(255,255,255,0.08);
         overflow-y: auto; overflow-x: hidden;
       }
+
+      /* ── 下ツールバー (高さ 144px = 72×2) ── */
       #toolbar-bottom {
         position: fixed; left: 0; right: var(--right-w); bottom: 0; height: var(--bottom-h);
         background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
         -webkit-backdrop-filter: var(--toolbar-blur);
-        display: flex; align-items: center; padding: 0 10px 0 14px; gap: 8px;
+        display: flex; align-items: center; padding: 0 16px 0 20px; gap: 14px;
         z-index: 100; border-top: 1px solid rgba(255,255,255,0.08);
       }
       #toolbar-corner {
@@ -90,41 +94,47 @@
         display: flex; align-items: center; justify-content: center;
       }
       .tb-label {
-        font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+        font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
         color: rgba(255,255,255,0.38); text-transform: uppercase;
         width: 100%; text-align: center; margin-top: 4px;
       }
-      .tb-divider { width: 96px; height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; }
+      .tb-divider { width: 158px; height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; }
+
+      /* カウンターサークル — 1.5倍 (ツールバー174px幅に収まるよう154px) */
       #counter-wrap {
         display: flex; flex-direction: column; align-items: center;
-        gap: 4px; width: 100%; padding: 4px 0 2px; cursor: pointer;
+        gap: 6px; width: 100%; padding: 6px 0 2px; cursor: pointer;
       }
       #counter-circle {
-        width: 96px; height: 96px; border-radius: 50%; border: 3px solid var(--accent);
+        width: 154px; height: 154px; border-radius: 50%; border: 4px solid var(--accent);
         display: flex; align-items: center; justify-content: center;
         font-weight: 900; color: var(--accent); background: transparent;
-        font-size: 36px; transition: border-color 0.2s, color 0.2s; flex-shrink: 0;
+        font-size: 60px; transition: border-color 0.2s, color 0.2s; flex-shrink: 0;
       }
-      #counter-label { font-size: 11px; color: rgba(255,255,255,0.5); text-align: center; }
+      #counter-label { font-size: 14px; color: rgba(255,255,255,0.5); text-align: center; }
+
+      /* ツールバーボタン — 幅158px (左右8pxずつパディング確保), 高さ80px */
       .tb-icon-btn {
-        width: 96px; height: 96px; border-radius: 14px; border: none;
-        background: rgba(255,255,255,0.08); color: #fff; font-size: 12px; font-weight: 700;
+        width: 158px; height: 80px; border-radius: 18px; border: none;
+        background: rgba(255,255,255,0.08); color: #fff; font-size: 14px; font-weight: 700;
         cursor: pointer; display: flex; flex-direction: column; align-items: center;
-        justify-content: center; gap: 4px; -webkit-tap-highlight-color: transparent;
+        justify-content: center; gap: 6px; -webkit-tap-highlight-color: transparent;
         transition: background 0.12s, transform 0.1s; line-height: 1.2;
-        text-align: center; padding: 4px;
+        text-align: center; padding: 6px;
       }
       .tb-icon-btn:active { transform: scale(0.91); background: rgba(255,255,255,0.18); }
       .tb-icon-btn:disabled { opacity: 0.28; pointer-events: none; }
-      .tb-icon-btn .ib-icon { font-size: 28px; line-height: 1; }
-      .tb-icon-btn .ib-txt { font-size: 12px; }
+      .tb-icon-btn .ib-icon { font-size: 32px; line-height: 1; }
+      .tb-icon-btn .ib-txt { font-size: 14px; }
       .tb-icon-btn.danger { color: #ff6b6b; }
       .tb-icon-btn.success { color: #5dd47e; }
       .tb-icon-btn.accent { background: var(--accent); color: #fff; }
       .tb-icon-btn.accent:active { background: var(--accent2); }
-      #palette-wrap { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 2px 4px; }
+
+      /* カラースウォッチ — 1.5倍 */
+      #palette-wrap { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 4px 8px; }
       .color-swatch {
-        width: 44px; height: 44px; border-radius: 50%; border: 3px solid transparent;
+        width: 56px; height: 56px; border-radius: 50%; border: 4px solid transparent;
         cursor: pointer; transition: transform 0.14s, border-color 0.14s, box-shadow 0.14s;
         -webkit-tap-highlight-color: transparent; flex-shrink: 0;
         display: flex; align-items: center; justify-content: center;
@@ -134,20 +144,23 @@
         font-weight: 900; color: #fff; pointer-events: none; user-select: none;
         text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.9); line-height: 1;
       }
-      .slider-group { display: flex; align-items: center; gap: 8px; flex: 1; }
-      .slider-group label { font-size: 11px; color: rgba(255,255,255,0.5); white-space: nowrap; }
-      .slider-group input[type="range"] { flex: 1; accent-color: var(--accent); height: 4px; min-width: 60px; }
-      .slider-val { font-size: 13px; font-weight: 700; color: #fff; min-width: 32px; text-align: center; }
+
+      /* 下ツールバー内スライダー・ページボタン — 2倍サイズ感 */
+      .slider-group { display: flex; align-items: center; gap: 10px; flex: 1; }
+      .slider-group label { font-size: 15px; color: rgba(255,255,255,0.5); white-space: nowrap; }
+      .slider-group input[type="range"] { flex: 1; accent-color: var(--accent); height: 6px; min-width: 80px; }
+      .slider-val { font-size: 18px; font-weight: 700; color: #fff; min-width: 42px; text-align: center; }
       .pg-btn {
-        width: 44px; height: 44px; border-radius: 10px;
-        border: 1.5px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.07);
-        color: #fff; font-size: 18px; cursor: pointer; display: flex;
+        width: 72px; height: 72px; border-radius: 14px;
+        border: 2px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.07);
+        color: #fff; font-size: 26px; cursor: pointer; display: flex;
         align-items: center; justify-content: center;
         -webkit-tap-highlight-color: transparent; transition: background 0.12s, transform 0.1s; flex-shrink: 0;
       }
       .pg-btn:active { transform: scale(0.91); background: rgba(255,255,255,0.18); }
       .pg-btn:disabled { opacity: 0.25; pointer-events: none; }
-      #page-info-txt { font-size: 13px; font-weight: 700; color: #fff; white-space: nowrap; min-width: 52px; text-align: center; }
+      #page-info-txt { font-size: 18px; font-weight: 700; color: #fff; white-space: nowrap; min-width: 72px; text-align: center; }
+
       #zoom-badge {
         position: fixed; top: 12px; left: 50%;
         transform: translateX(-50%) translateY(-60px);
@@ -238,7 +251,7 @@
       .fn-cancel { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.5); }
       .fn-save { background: #1e5e38; color: #5dd47e; }
       #toast {
-        position: fixed; bottom: 90px; left: 50%;
+        position: fixed; bottom: 160px; left: 50%;
         transform: translateX(-50%) translateY(80px);
         background: rgba(20,20,20,0.95); color: #fff; padding: 10px 22px;
         border-radius: 22px; font-size: 13px; font-weight: 600;
@@ -303,19 +316,19 @@
         <button class="pg-btn" id="prev-btn" disabled onclick="changePage(-1)">◀</button>
         <div id="page-info-txt">— / —</div>
         <button class="pg-btn" id="next-btn" disabled onclick="changePage(1)">▶</button>
-        <div style="width:1px;height:44px;background:rgba(255,255,255,0.12);margin:0 4px;flex-shrink:0"></div>
+        <div style="width:1px;height:80px;background:rgba(255,255,255,0.12);margin:0 4px;flex-shrink:0"></div>
         <div class="slider-group">
           <label>大きさ</label>
           <input type="range" id="stamp-size" min="10" max="120" value="20" step="1" oninput="document.getElementById('size-val').textContent=this.value" />
           <span class="slider-val" id="size-val">20</span>
         </div>
-        <div style="width:1px;height:44px;background:rgba(255,255,255,0.12);margin:0 4px;flex-shrink:0"></div>
+        <div style="width:1px;height:80px;background:rgba(255,255,255,0.12);margin:0 4px;flex-shrink:0"></div>
         <button class="pg-btn" onclick="changeStampSize(-1)" title="スタンプ縮小">－</button>
         <button class="pg-btn" onclick="changeStampSize(1)" title="スタンプ拡大">＋</button>
       </div>
 
       <div id="toolbar-corner">
-        <span style="font-size:10px;color:rgba(255,255,255,0.3);text-align:center;line-height:1.4">J<br />stamp</span>
+        <span style="font-size:13px;color:rgba(255,255,255,0.3);text-align:center;line-height:1.6">J<br />stamp</span>
       </div>
     </div>
 
@@ -446,15 +459,9 @@ self.addEventListener('fetch', function(e) {
       let canvasW          = 0;
       let canvasH          = 0;
       let currentColor     = PALETTE[0].color;
-      // stamps[pageNum] の各エントリ: { x, y, num, color, pdfSize }
-      //   x, y     : PDF座標系（scale:1 viewport内ピクセル位置）
-      //   pdfSize  : スタンプ直径（PDF座標系ピクセル数）
       let stamps           = {};
 
-      // 色ごとのカウンター（キー: color文字列, 値: 次に置く番号 1〜999）
       const colorCounters = Object.fromEntries(PALETTE.map(p => [p.color, 1]));
-
-      // スタンプ数字のベースフォントサイズ（WebViewの最小フォントサイズ制限回避用）
       const STAMP_BASE_FONT = 16;
 
       // ── カラーパレット初期化 ──────────────────────────────────────────────
@@ -476,24 +483,19 @@ self.addEventListener('fetch', function(e) {
         });
       })();
 
-      // ── UI更新ヘルパー ────────────────────────────────────────────────────
-
-      // スウォッチ内径（直径34px、ボーダー3px×2 = 内径28px）に収まる最大フォントサイズを返す
       function swatchFontSize(digits) {
-        const innerD   = 28;
+        const innerD   = 40; // 56px - 4px×2 border = 48px内径 → 余裕持って40
         const byHeight = innerD * 0.82;
         const byWidth  = digits === 1 ? innerD * 0.72
                        : digits === 2 ? innerD * 0.72 / 1.7
                        :                innerD * 0.72 / 2.55;
-        return Math.max(7, Math.floor(Math.min(byHeight, byWidth)));
+        return Math.max(8, Math.floor(Math.min(byHeight, byWidth)));
       }
 
-      // 桁数に応じた文字サイズ比率（addDotDOM・savePDF共通）
       function stampFRatio(digits) {
         return digits >= 3 ? 0.44 : digits === 2 ? 0.56 : 0.68;
       }
 
-      // カウンターサークルとパレット上の全数字を同期する
       function updateCounterUI() {
         const n      = colorCounters[currentColor];
         const circle = document.getElementById("counter-circle");
@@ -501,7 +503,7 @@ self.addEventListener('fetch', function(e) {
         circle.style.color       = currentColor;
         circle.textContent       = n;
         const digits = String(n).length;
-        circle.style.fontSize = digits >= 3 ? "26px" : digits === 2 ? "32px" : "40px";
+        circle.style.fontSize = digits >= 3 ? "42px" : digits === 2 ? "54px" : "68px";
         PALETTE.forEach(p => {
           const span = document.querySelector(`.swatch-num[data-swatch-color="${p.color}"]`);
           if (span) {
@@ -564,7 +566,6 @@ self.addEventListener('fetch', function(e) {
         closeNumpad();
       }
 
-      // 現在選択中の色のカウンターのみを1にリセット
       function resetCounter() {
         colorCounters[currentColor] = 1;
         updateCounterUI();
@@ -622,7 +623,6 @@ self.addEventListener('fetch', function(e) {
         canvasW = vp.width  / dpr;
         canvasH = vp.height / dpr;
         await page.render({ canvasContext: ctx, viewport: vp }).promise;
-        // DOMレイアウト確定後にtransformを適用して正確に中央配置
         requestAnimationFrame(() => {
           applyTransform();
           refreshStampDots(num);
@@ -659,7 +659,6 @@ self.addEventListener('fetch', function(e) {
         wrap.style.height     = canvasH + "px";
       }
 
-      // 指定スクリーン座標（canvas-area左上基準）を中心にズームし、その点が動かないよう pan を調整する
       function zoomAroundPoint(newZoom, screenMx, screenMy) {
         newZoom = Math.max(0.3, Math.min(8, newZoom));
         const { availW, availH } = getAvailSize();
@@ -715,7 +714,6 @@ self.addEventListener('fetch', function(e) {
       let touchStartTime = 0;
       let touchStartPanX = 0, touchStartPanY = 0;
 
-      // ピンチ開始時のスナップショット
       let pinchStartDist = null;
       let pinchStartZoom = null;
       let pinchStartPanX = null;
@@ -758,13 +756,10 @@ self.addEventListener('fetch', function(e) {
           const currentMidY = (t0.clientY + t1.clientY) / 2 - aRect.top;
           const newZoom     = Math.max(0.3, Math.min(8, pinchStartZoom * (currentDist / pinchStartDist)));
           const { availW, availH } = getAvailSize();
-          // ピンチ開始時のcanvas左上スクリーン座標
           const startLeft    = (availW - canvasW * pinchStartZoom) / 2 + pinchStartPanX;
           const startTop     = (availH - canvasH * pinchStartZoom) / 2 + pinchStartPanY;
-          // ピンチ中心点が指すcanvas内座標（スケール1基準）
           const fixedX       = (pinchStartMidX - startLeft) / pinchStartZoom;
           const fixedY       = (pinchStartMidY - startTop)  / pinchStartZoom;
-          // 新ズームでその点が currentMid に来るよう配置
           const newLeft      = currentMidX - fixedX * newZoom;
           const newTop       = currentMidY - fixedY * newZoom;
           panX      = newLeft - (availW - canvasW * newZoom) / 2;
@@ -863,7 +858,6 @@ self.addEventListener('fetch', function(e) {
         updateCursor();
       }, { passive: false });
 
-      // Safari/iPadでのページ全体スクロール・ズームを防止
       document.addEventListener("touchmove", (e) => {
         if (e.touches.length > 1) e.preventDefault();
       }, { passive: false });
@@ -875,11 +869,9 @@ self.addEventListener('fetch', function(e) {
       function placeTapStamp(clientX, clientY) {
         const wrap = document.getElementById("canvas-wrap");
         const rect = wrap.getBoundingClientRect();
-        // canvas座標系（baseScale適用済みピクセル位置）
         const cx = (clientX - rect.left) / zoomScale;
         const cy = (clientY - rect.top)  / zoomScale;
         if (cx < 0 || cy < 0 || cx > canvasW || cy > canvasH) return;
-        // PDF座標系（scale:1）へ変換
         const pdfX    = cx / baseScale;
         const pdfY    = cy / baseScale;
         const pdfSize = parseInt(document.getElementById("stamp-size").value);
@@ -902,11 +894,9 @@ self.addEventListener('fetch', function(e) {
         const wrap   = document.getElementById("canvas-wrap");
         const dot    = document.createElement("div");
         dot.className = "stamp-dot" + (isNew ? " new-pop" : "");
-        // PDF座標系 → CSS座標系（baseScale適用）
         const cx     = Math.round(s.x * baseScale);
         const cy     = Math.round(s.y * baseScale);
         const dispSz = Math.round(s.pdfSize * baseScale);
-        // dispSzが偶数になるよう保証（奇数だとサブピクセルで楕円になりやすい）
         const sz     = dispSz % 2 === 0 ? dispSz : dispSz + 1;
         const digits     = String(s.num).length;
         const fRatio     = stampFRatio(digits);
@@ -947,7 +937,6 @@ self.addEventListener('fetch', function(e) {
         document.getElementById("undo-btn").disabled = !list || list.length === 0;
       }
 
-      // ── スタンプサイズ変更 ────────────────────────────────────────────────
       function changeStampSize(delta) {
         const slider = document.getElementById("stamp-size");
         const newVal = Math.max(parseInt(slider.min), Math.min(parseInt(slider.max), parseInt(slider.value) + delta));
@@ -955,7 +944,6 @@ self.addEventListener('fetch', function(e) {
         document.getElementById("size-val").textContent = newVal;
       }
 
-      // ── ページ切り替え ────────────────────────────────────────────────────
       async function changePage(delta) {
         const next = currentPage + delta;
         if (next < 1 || next > totalPages) return;
@@ -1004,14 +992,13 @@ self.addEventListener('fetch', function(e) {
             if (!list || list.length === 0) continue;
             const pdfPage          = pages[pageNum - 1];
             const { width: pW, height: pH } = pdfPage.getSize();
-            // PDF本来のviewport（scale:1）サイズを取得して座標変換比を算出
             const page             = await pdfDoc.getPage(pageNum);
             const vp0              = page.getViewport({ scale: 1 });
             const scaleX           = pW / vp0.width;
             const scaleY           = pH / vp0.height;
             for (const s of list) {
               const cx          = s.x * scaleX;
-              const cy          = pH - s.y * scaleY;          // y軸反転
+              const cy          = pH - s.y * scaleY;
               const r           = (s.pdfSize / 2) * ((scaleX + scaleY) / 2);
               const [rr, gg, bb] = hexToRgb01(s.color);
               const strokeColor  = rgb(rr, gg, bb);
@@ -1036,7 +1023,6 @@ self.addEventListener('fetch', function(e) {
           const bytes = await pdfLibDoc.save();
           const blob  = new Blob([bytes], { type: "application/pdf" });
           if (window.Android) {
-            // Android ネイティブ経由で保存
             const reader = new FileReader();
             reader.onload = function() {
               const base64 = reader.result.split(',')[1];
@@ -1051,7 +1037,6 @@ self.addEventListener('fetch', function(e) {
             a.style.display = "none";
             document.body.appendChild(a);
             a.click();
-            // Safariでダウンロードが動作しない場合は新しいタブで開く
             setTimeout(() => {
               document.body.removeChild(a);
               URL.revokeObjectURL(url);
@@ -1072,7 +1057,6 @@ self.addEventListener('fetch', function(e) {
         ];
       }
 
-      // ── トースト通知 ──────────────────────────────────────────────────────
       let toastTimer = null;
       function showToast(msg) {
         const el = document.getElementById("toast");
@@ -1082,7 +1066,6 @@ self.addEventListener('fetch', function(e) {
         toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
       }
 
-      // ── リサイズ対応 ──────────────────────────────────────────────────────
       window.addEventListener("resize", () => { if (pdfDoc) renderPage(currentPage, false); });
 
       updateCursor();
