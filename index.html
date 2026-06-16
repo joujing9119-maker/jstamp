@@ -22,8 +22,8 @@
         --accent2: #e74c3c;
         --toolbar-bg: rgba(20, 20, 20, 0.82);
         --toolbar-blur: blur(12px);
-        --right-w: 116px;
-        --bottom-h: 72px;
+        --right-w: 136px;
+        --bottom-h: 88px;
       }
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       html, body {
@@ -94,37 +94,37 @@
         color: rgba(255,255,255,0.38); text-transform: uppercase;
         width: 100%; text-align: center; margin-top: 4px;
       }
-      .tb-divider { width: 96px; height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; }
+      .tb-divider { width: 116px; height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; }
       #counter-wrap {
         display: flex; flex-direction: column; align-items: center;
         gap: 4px; width: 100%; padding: 4px 0 2px; cursor: pointer;
       }
       #counter-circle {
-        width: 96px; height: 96px; border-radius: 50%; border: 3px solid var(--accent);
+        width: 52px; height: 52px; border-radius: 50%; border: 3px solid var(--accent);
         display: flex; align-items: center; justify-content: center;
         font-weight: 900; color: var(--accent); background: transparent;
-        font-size: 36px; transition: border-color 0.2s, color 0.2s; flex-shrink: 0;
+        font-size: 20px; transition: border-color 0.2s, color 0.2s; flex-shrink: 0;
       }
       #counter-label { font-size: 11px; color: rgba(255,255,255,0.5); text-align: center; }
       .tb-icon-btn {
-        width: 96px; height: 96px; border-radius: 14px; border: none;
-        background: rgba(255,255,255,0.08); color: #fff; font-size: 12px; font-weight: 700;
+        width: 116px; height: 108px; border-radius: 14px; border: none;
+        background: rgba(255,255,255,0.08); color: #fff; font-size: 13px; font-weight: 700;
         cursor: pointer; display: flex; flex-direction: column; align-items: center;
-        justify-content: center; gap: 4px; -webkit-tap-highlight-color: transparent;
+        justify-content: center; gap: 5px; -webkit-tap-highlight-color: transparent;
         transition: background 0.12s, transform 0.1s; line-height: 1.2;
         text-align: center; padding: 4px;
       }
       .tb-icon-btn:active { transform: scale(0.91); background: rgba(255,255,255,0.18); }
       .tb-icon-btn:disabled { opacity: 0.28; pointer-events: none; }
-      .tb-icon-btn .ib-icon { font-size: 28px; line-height: 1; }
-      .tb-icon-btn .ib-txt { font-size: 12px; }
+      .tb-icon-btn .ib-icon { font-size: 34px; line-height: 1; }
+      .tb-icon-btn .ib-txt { font-size: 13px; }
       .tb-icon-btn.danger { color: #ff6b6b; }
       .tb-icon-btn.success { color: #5dd47e; }
       .tb-icon-btn.accent { background: var(--accent); color: #fff; }
       .tb-icon-btn.accent:active { background: var(--accent2); }
       #palette-wrap { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 2px 4px; }
       .color-swatch {
-        width: 44px; height: 44px; border-radius: 50%; border: 3px solid transparent;
+        width: 52px; height: 52px; border-radius: 50%; border: 3px solid transparent;
         cursor: pointer; transition: transform 0.14s, border-color 0.14s, box-shadow 0.14s;
         -webkit-tap-highlight-color: transparent; flex-shrink: 0;
         display: flex; align-items: center; justify-content: center;
@@ -135,19 +135,19 @@
         text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.9); line-height: 1;
       }
       .slider-group { display: flex; align-items: center; gap: 8px; flex: 1; }
-      .slider-group label { font-size: 11px; color: rgba(255,255,255,0.5); white-space: nowrap; }
-      .slider-group input[type="range"] { flex: 1; accent-color: var(--accent); height: 4px; min-width: 60px; }
-      .slider-val { font-size: 13px; font-weight: 700; color: #fff; min-width: 32px; text-align: center; }
+      .slider-group label { font-size: 13px; color: rgba(255,255,255,0.5); white-space: nowrap; }
+      .slider-group input[type="range"] { flex: 1; accent-color: var(--accent); height: 6px; min-width: 60px; }
+      .slider-val { font-size: 16px; font-weight: 700; color: #fff; min-width: 36px; text-align: center; }
       .pg-btn {
-        width: 44px; height: 44px; border-radius: 10px;
+        width: 56px; height: 56px; border-radius: 12px;
         border: 1.5px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.07);
-        color: #fff; font-size: 18px; cursor: pointer; display: flex;
+        color: #fff; font-size: 22px; cursor: pointer; display: flex;
         align-items: center; justify-content: center;
         -webkit-tap-highlight-color: transparent; transition: background 0.12s, transform 0.1s; flex-shrink: 0;
       }
       .pg-btn:active { transform: scale(0.91); background: rgba(255,255,255,0.18); }
       .pg-btn:disabled { opacity: 0.25; pointer-events: none; }
-      #page-info-txt { font-size: 13px; font-weight: 700; color: #fff; white-space: nowrap; min-width: 52px; text-align: center; }
+      #page-info-txt { font-size: 15px; font-weight: 700; color: #fff; white-space: nowrap; min-width: 56px; text-align: center; }
       #zoom-badge {
         position: fixed; top: 12px; left: 50%;
         transform: translateX(-50%) translateY(-60px);
@@ -306,7 +306,7 @@
         <div style="width:1px;height:44px;background:rgba(255,255,255,0.12);margin:0 4px;flex-shrink:0"></div>
         <div class="slider-group">
           <label>大きさ</label>
-          <input type="range" id="stamp-size" min="10" max="120" value="20" step="1" oninput="document.getElementById('size-val').textContent=this.value" />
+          <input type="range" id="stamp-size" min="10" max="40" value="20" step="1" oninput="document.getElementById('size-val').textContent=this.value" />
           <span class="slider-val" id="size-val">20</span>
         </div>
         <div style="width:1px;height:44px;background:rgba(255,255,255,0.12);margin:0 4px;flex-shrink:0"></div>
@@ -501,7 +501,7 @@ self.addEventListener('fetch', function(e) {
         circle.style.color       = currentColor;
         circle.textContent       = n;
         const digits = String(n).length;
-        circle.style.fontSize = digits >= 3 ? "26px" : digits === 2 ? "32px" : "40px";
+        circle.style.fontSize = digits >= 3 ? "11px" : digits === 2 ? "14px" : "20px";
         PALETTE.forEach(p => {
           const span = document.querySelector(`.swatch-num[data-swatch-color="${p.color}"]`);
           if (span) {
@@ -594,7 +594,7 @@ self.addEventListener('fetch', function(e) {
           document.getElementById("prev-btn").disabled = false;
           document.getElementById("next-btn").disabled = false;
           document.getElementById("stamp-size").value  = 20;
-          document.getElementById("size-val").textContent = 20;
+          document.getElementById("size-val").textContent = "20";
           updateCounterUI();
           await renderPage(currentPage, true);
           showToast(`PDF 読み込み完了（${totalPages}ページ）`);
