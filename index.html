@@ -134,6 +134,7 @@
         font-weight: 900; color: #fff; pointer-events: none; user-select: none;
         text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.9); line-height: 1;
       }
+      .tb-vdivider { width: 1px; height: 44px; background: rgba(255,255,255,0.12); margin: 0 4px; flex-shrink: 0; }
       .slider-group { display: flex; align-items: center; gap: 8px; flex: 1; }
       .slider-group label { font-size: 13px; color: rgba(255,255,255,0.5); white-space: nowrap; }
       .slider-group input[type="range"] { flex: 1; accent-color: var(--accent); height: 6px; min-width: 60px; }
@@ -303,13 +304,13 @@
         <button class="pg-btn" id="prev-btn" disabled onclick="changePage(-1)">◀</button>
         <div id="page-info-txt">— / —</div>
         <button class="pg-btn" id="next-btn" disabled onclick="changePage(1)">▶</button>
-        <div style="width:1px;height:44px;background:rgba(255,255,255,0.12);margin:0 4px;flex-shrink:0"></div>
+        <div class="tb-vdivider"></div>
         <div class="slider-group">
           <label>大きさ</label>
           <input type="range" id="stamp-size" min="10" max="40" value="20" step="1" oninput="document.getElementById('size-val').textContent=this.value" />
           <span class="slider-val" id="size-val">20</span>
         </div>
-        <div style="width:1px;height:44px;background:rgba(255,255,255,0.12);margin:0 4px;flex-shrink:0"></div>
+        <div class="tb-vdivider"></div>
         <button class="pg-btn" onclick="changeStampSize(-1)" title="スタンプ縮小">－</button>
         <button class="pg-btn" onclick="changeStampSize(1)" title="スタンプ拡大">＋</button>
       </div>
@@ -319,7 +320,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver0.72</div>
+    <div id="version-badge">ver0.74</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -363,7 +364,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "genba-survey-v2";
+        const CACHE_NAME = "jstamp-v0.73";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -390,7 +391,12 @@ self.addEventListener('activate', function(e) {
 self.addEventListener('fetch', function(e) {
   if (e.request.method !== 'GET') return;
   var url = e.request.url;
-  var isCDN = CACHE_URLS.some(function(u){ return url.indexOf(u) === 0; });
+  // index.html は常にネットワークから取得（キャッシュしない）
+  if (url.endsWith('/') || url.endsWith('/index.html') || url.indexOf('?') !== -1) {
+    e.respondWith(fetch(e.request).catch(function(){ return caches.match(e.request); }));
+    return;
+  }
+  var isCDN = CACHE_URLS.some(function(u){ return url.indexOf(u) !== -1; });
   if (isCDN) {
     e.respondWith(caches.match(e.request).then(function(c) {
       if (c) return c;
@@ -401,10 +407,7 @@ self.addEventListener('fetch', function(e) {
     }));
     return;
   }
-  e.respondWith(fetch(e.request).then(function(r) {
-    if (r && r.ok && e.request.url.indexOf('http') === 0) { var cl = r.clone(); caches.open(CACHE_NAME).then(function(cache){ cache.put(e.request, cl); }); }
-    return r;
-  }).catch(function(){ return caches.match(e.request); }));
+  e.respondWith(fetch(e.request).catch(function(){ return caches.match(e.request); }));
 });
 `;
         try {
@@ -478,9 +481,9 @@ self.addEventListener('fetch', function(e) {
 
       // ── UI更新ヘルパー ────────────────────────────────────────────────────
 
-      // スウォッチ内径（直径34px、ボーダー3px×2 = 内径28px）に収まる最大フォントサイズを返す
+      // スウォッチ内径（直径52px、ボーダー3px×2 = 内径46px）に収まる最大フォントサイズを返す
       function swatchFontSize(digits) {
-        const innerD   = 28;
+        const innerD   = 46;
         const byHeight = innerD * 0.82;
         const byWidth  = digits === 1 ? innerD * 0.72
                        : digits === 2 ? innerD * 0.72 / 1.7
@@ -580,8 +583,8 @@ self.addEventListener('fetch', function(e) {
         const reader = new FileReader();
         reader.onload = async (e) => {
           const rawBuffer  = e.target.result;
-          originalPdfBytes = new Uint8Array(rawBuffer.slice(0));
-          const pdfJsData  = new Uint8Array(rawBuffer.slice(0));
+          originalPdfBytes = new Uint8Array(rawBuffer);
+          const pdfJsData  = originalPdfBytes.slice();
           pdfDoc       = await pdfjsLib.getDocument({ data: pdfJsData }).promise;
           totalPages   = pdfDoc.numPages;
           currentPage  = 1;
@@ -671,20 +674,6 @@ self.addEventListener('fetch', function(e) {
         panY      = newCy - (availH - canvasH * newZoom) / 2;
         zoomScale = newZoom;
         applyTransform();
-      }
-
-      function changeZoom(delta) {
-        const { availW, availH } = getAvailSize();
-        zoomAroundPoint(zoomScale + delta, availW / 2, availH / 2);
-        showZoomBadge();
-        updateCursor();
-      }
-
-      function resetZoom() {
-        zoomScale = 1.0; panX = 0; panY = 0;
-        applyTransform();
-        showZoomBadge();
-        updateCursor();
       }
 
       function updateCursor(state) {
