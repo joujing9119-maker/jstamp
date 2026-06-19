@@ -255,11 +255,23 @@
         color: rgba(255,255,255,0.28); pointer-events: none;
         z-index: 150; user-select: none;
       }
+      #delete-mode-banner {
+        position: absolute; top: 0; left: 0; right: 0;
+        background: var(--accent); color: #fff;
+        font-size: 14px; font-weight: 700; letter-spacing: 0.05em;
+        text-align: center; padding: 8px 0; z-index: 60;
+        display: none; pointer-events: none;
+        box-shadow: 0 2px 12px rgba(192,57,43,0.6);
+      }
+      #delete-mode-banner.show { display: block; }
+      .tb-icon-btn#delete-mode-btn.active { background: var(--accent); color: #fff; }
+      .tb-icon-btn#delete-mode-btn.active:active { background: var(--accent2); }
     </style>
   </head>
   <body>
     <div id="viewport">
       <div id="canvas-area">
+        <div id="delete-mode-banner">🗑 削除モード中：スタンプをタップして削除</div>
         <div id="drop-zone">
           <div class="dz-icon">📄</div>
           <h2>PDFファイルを選択してください</h2>
@@ -289,6 +301,9 @@
         </button>
         <button class="tb-icon-btn" style="color:#ffaa44" onclick="resetCounter()" title="番号リセット">
           <span class="ib-icon">↺</span><span class="ib-txt">番号1へ</span>
+        </button>
+        <button class="tb-icon-btn" id="delete-mode-btn" onclick="toggleDeleteMode()" title="削除モード切替">
+          <span class="ib-icon">🗑</span><span class="ib-txt">削除</span>
         </button>
         <div class="tb-divider"></div>
         <div class="tb-label">PDF</div>
@@ -320,7 +335,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver0.75</div>
+    <div id="version-badge">ver0.79</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -364,7 +379,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v0.75";
+        const CACHE_NAME = "jstamp-v0.79";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -453,6 +468,13 @@ self.addEventListener('fetch', function(e) {
       //   x, y     : PDF座標系（scale:1 viewport内ピクセル位置）
       //   pdfSize  : スタンプ直径（PDF座標系ピクセル数）
       let stamps           = {};
+      // ページを横断して「最後に押したスタンプ」を取り消せるよう、
+      // 押した順に { pageNum, stamp } を記録する履歴スタック。
+      let stampHistory      = [];
+      // 削除モードのON/OFF状態
+      let deleteMode        = false;
+      // 直前の保存以降に未保存の変更があるかどうか
+      let hasUnsavedChanges = false;
 
       // 色ごとのカウンター（キー: color文字列, 値: 次に置く番号 1〜999）
       const colorCounters = Object.fromEntries(PALETTE.map(p => [p.color, 1]));
@@ -589,6 +611,9 @@ self.addEventListener('fetch', function(e) {
           totalPages   = pdfDoc.numPages;
           currentPage  = 1;
           stamps       = {};
+          stampHistory = [];
+          hasUnsavedChanges = false;
+          if (deleteMode) toggleDeleteMode();
           PALETTE.forEach(p => { colorCounters[p.color] = 1; });
           document.getElementById("drop-zone").style.display   = "none";
           document.getElementById("canvas-wrap").style.display = "block";
@@ -647,14 +672,14 @@ self.addEventListener('fetch', function(e) {
         const { availW, availH } = getAvailSize();
         const scaledW = canvasW * zoomScale;
         const scaledH = canvasH * zoomScale;
-        if (zoomScale <= 1.0) {
-          panX = 0; panY = 0;
-        } else {
-          const maxPan = availW + scaledW;
-          const maxPanY = availH + scaledH;
-          panX = Math.max(-maxPan,  Math.min(maxPan,  panX));
-          panY = Math.max(-maxPanY, Math.min(maxPanY, panY));
-        }
+        // 縮小表示時（画像が画面より小さい）はパン不要なのでその軸だけ0にクランプする。
+        // ズームが1.0をまたぐ瞬間に panX/panY を丸ごと0へ強制リセットすると、
+        // ピンチ操作中に画像が一瞬中央へ引き戻されてジャンプして見えるため、
+        // 「画面より小さい軸だけ」個別に0へクランプする方式に変更。
+        const maxPan  = availW + scaledW;
+        const maxPanY = availH + scaledH;
+        panX = scaledW <= availW ? 0 : Math.max(-maxPan,  Math.min(maxPan,  panX));
+        panY = scaledH <= availH ? 0 : Math.max(-maxPanY, Math.min(maxPanY, panY));
         const cx = (availW - scaledW) / 2 + panX;
         const cy = (availH - scaledH) / 2 + panY;
         wrap.style.transform  = `translate(${cx}px, ${cy}px) scale(${zoomScale})`;
@@ -678,7 +703,8 @@ self.addEventListener('fetch', function(e) {
 
       function updateCursor(state) {
         const wrap = document.getElementById("canvas-wrap");
-        if (state === "grabbing")  wrap.style.cursor = "grabbing";
+        if (deleteMode)             wrap.style.cursor = "not-allowed";
+        else if (state === "grabbing")  wrap.style.cursor = "grabbing";
         else if (zoomScale > 1.05) wrap.style.cursor = "grab";
         else                        wrap.style.cursor = "crosshair";
       }
@@ -860,7 +886,7 @@ self.addEventListener('fetch', function(e) {
       document.addEventListener("gesturechange", (e) => { e.preventDefault(); }, { passive: false });
       document.addEventListener("gestureend", (e) => { e.preventDefault(); }, { passive: false });
 
-      // ── スタンプ配置 ──────────────────────────────────────────────────────
+      // ── スタンプ配置・削除（タップ共通入口） ─────────────────────────────
       function placeTapStamp(clientX, clientY) {
         const wrap = document.getElementById("canvas-wrap");
         const rect = wrap.getBoundingClientRect();
@@ -869,17 +895,57 @@ self.addEventListener('fetch', function(e) {
         const cy = (clientY - rect.top)  / zoomScale;
         if (cx < 0 || cy < 0 || cx > canvasW || cy > canvasH) return;
         // PDF座標系（scale:1）へ変換
-        const pdfX    = cx / baseScale;
-        const pdfY    = cy / baseScale;
+        const pdfX = cx / baseScale;
+        const pdfY = cy / baseScale;
+
+        if (deleteMode) {
+          deleteStampNear(pdfX, pdfY);
+          return;
+        }
+
         const pdfSize = parseInt(document.getElementById("stamp-size").value);
         const num     = colorCounters[currentColor];
         const stamp   = { x: pdfX, y: pdfY, num, color: currentColor, pdfSize };
         if (!stamps[currentPage]) stamps[currentPage] = [];
         stamps[currentPage].push(stamp);
+        stampHistory.push({ action: "place", pageNum: currentPage, stamp });
+        hasUnsavedChanges = true;
         addDotDOM(stamp, true);
         colorCounters[currentColor] = num >= 999 ? 1 : num + 1;
         updateCounterUI();
         updateUndoBtn();
+      }
+
+      // タップ位置（PDF座標系）に最も近いスタンプを1つ削除する。
+      // 当たり判定はスタンプ半径に少し余裕を持たせ、小さいスタンプでも狙いやすくする。
+      function deleteStampNear(pdfX, pdfY) {
+        const list = stamps[currentPage];
+        if (!list || list.length === 0) {
+          showToast("このページにスタンプがありません");
+          return;
+        }
+        const HIT_MARGIN_PX = 14; // 画面ピクセル基準の当たり判定の余裕
+        let bestIdx = -1, bestDist = Infinity;
+        list.forEach((s, i) => {
+          const dist = Math.hypot(s.x - pdfX, s.y - pdfY);
+          const hitR = s.pdfSize / 2 + HIT_MARGIN_PX / baseScale;
+          if (dist <= hitR && dist < bestDist) { bestDist = dist; bestIdx = i; }
+        });
+        if (bestIdx === -1) return;
+        const [removed] = list.splice(bestIdx, 1);
+        stampHistory.push({ action: "delete", pageNum: currentPage, stamp: removed });
+        hasUnsavedChanges = true;
+        refreshStampDots(currentPage);
+        updateUndoBtn();
+        showToast(`スタンプ「${removed.num}」を削除しました`);
+      }
+
+      // 削除モードのON/OFF切替
+      function toggleDeleteMode() {
+        deleteMode = !deleteMode;
+        document.getElementById("delete-mode-btn").classList.toggle("active", deleteMode);
+        document.getElementById("delete-mode-banner").classList.toggle("show", deleteMode);
+        updateCursor();
       }
 
       function refreshStampDots(pageNum) {
@@ -920,20 +986,41 @@ self.addEventListener('fetch', function(e) {
       }
 
       // ── Undo ──────────────────────────────────────────────────────────────
+      // ページをまたいでも「直前の操作」を正しく取り消せるよう、
+      // stampHistory（操作した順の履歴）から最後の1件を逆操作する。
+      // action: "place"  → 配置を取り消す（リストから削除し、番号カウンターを戻す）
+      // action: "delete" → 削除を取り消す（リストに復元する。カウンターは変更しない）
       function undoLast() {
-        const list = stamps[currentPage];
-        if (!list || list.length === 0) return;
-        const removed = list.pop();
-        colorCounters[removed.color] = removed.num;
+        if (stampHistory.length === 0) return;
+        const entry = stampHistory.pop();
+        const { action, pageNum, stamp } = entry;
+
+        if (action === "place") {
+          const list = stamps[pageNum];
+          if (list) {
+            const idx = list.indexOf(stamp);
+            if (idx !== -1) list.splice(idx, 1);
+          }
+          colorCounters[stamp.color] = stamp.num;
+        } else {
+          if (!stamps[pageNum]) stamps[pageNum] = [];
+          stamps[pageNum].push(stamp);
+        }
+
         updateCounterUI();
-        refreshStampDots(currentPage);
+        if (pageNum === currentPage) {
+          refreshStampDots(currentPage);
+        }
         updateUndoBtn();
-        showToast(`スタンプ「${removed.num}」を取り消しました`);
+        const pageNote = pageNum === currentPage ? "" : `（${pageNum}ページ目）`;
+        const msg = action === "place"
+          ? `スタンプ「${stamp.num}」の配置を取り消しました${pageNote}`
+          : `スタンプ「${stamp.num}」の削除を取り消しました${pageNote}`;
+        showToast(msg);
       }
 
       function updateUndoBtn() {
-        const list = stamps[currentPage];
-        document.getElementById("undo-btn").disabled = !list || list.length === 0;
+        document.getElementById("undo-btn").disabled = stampHistory.length === 0;
       }
 
       // ── スタンプサイズ変更 ────────────────────────────────────────────────
@@ -1024,6 +1111,7 @@ self.addEventListener('fetch', function(e) {
 
           const bytes = await pdfLibDoc.save();
           const blob  = new Blob([bytes], { type: "application/pdf" });
+          let shareCancelled = false;
           if (window.Android) {
             // Android ネイティブ経由で保存
             const reader = new FileReader();
@@ -1032,6 +1120,24 @@ self.addEventListener('fetch', function(e) {
               window.Android.saveFile(filename, base64);
             };
             reader.readAsDataURL(blob);
+          } else if (navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: "application/pdf" })] })) {
+            // iPad Safari（特にPWA standalone表示）では a.download が無視され
+            // ダウンロードが何も起きないように見えることがあるため、
+            // Web Share APIに対応していればこちらを優先する（「ファイルに保存」を選べる）。
+            try {
+              await navigator.share({
+                files: [new File([blob], filename, { type: "application/pdf" })],
+                title: filename,
+              });
+            } catch (shareErr) {
+              if (shareErr && shareErr.name === "AbortError") {
+                shareCancelled = true;
+              } else {
+                const url = URL.createObjectURL(blob);
+                window.open(url, "_blank");
+                setTimeout(() => URL.revokeObjectURL(url), 10000);
+              }
+            }
           } else {
             const url = URL.createObjectURL(blob);
             const a   = document.createElement("a");
@@ -1040,13 +1146,15 @@ self.addEventListener('fetch', function(e) {
             a.style.display = "none";
             document.body.appendChild(a);
             a.click();
-            // Safariでダウンロードが動作しない場合は新しいタブで開く
-            setTimeout(() => {
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
-            }, 3000);
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 3000);
           }
-          showToast("✅ " + filename + " を保存しました");
+          if (shareCancelled) {
+            showToast("保存をキャンセルしました");
+          } else {
+            hasUnsavedChanges = false;
+            showToast("✅ " + filename + " を保存しました");
+          }
         } catch (err) {
           console.error(err);
           showToast("⚠ 保存中にエラーが発生しました: " + err.message);
@@ -1073,6 +1181,14 @@ self.addEventListener('fetch', function(e) {
 
       // ── リサイズ対応 ──────────────────────────────────────────────────────
       window.addEventListener("resize", () => { if (pdfDoc) renderPage(currentPage, false); });
+
+      // 未保存のスタンプがある状態で誤って閉じる事故を防ぐ確認ダイアログ
+      window.addEventListener("beforeunload", (e) => {
+        if (hasUnsavedChanges) {
+          e.preventDefault();
+          e.returnValue = "";
+        }
+      });
 
       updateCursor();
     </script>
