@@ -344,7 +344,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver0.88</div>
+    <div id="version-badge">ver0.90</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -402,7 +402,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v0.88";
+        const CACHE_NAME = "jstamp-v0.90";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -518,6 +518,11 @@ self.addEventListener('fetch', function(e) {
       // 色ごとのカウンター（キー: color文字列, 値: 次に置く番号 1〜999）
       const colorCounters = Object.fromEntries(PALETTE.map(p => [p.color, 1]));
 
+      // ページ送り・Undoボタンは多数の関数から頻繁に参照されるためキャッシュする
+      const prevBtnEl = document.getElementById("prev-btn");
+      const nextBtnEl = document.getElementById("next-btn");
+      const undoBtnEl = document.getElementById("undo-btn");
+
       // ── スタンプデータの自動バックアップ（localStorage） ─────────────────
       // アプリやデバイスの都合（強制終了・SW更新によるリロード・クラッシュ等）で
       // 保存前のスタンプ位置データが失われることは絶対に避けたいため、
@@ -586,6 +591,11 @@ self.addEventListener('fetch', function(e) {
           numSpan.className = "swatch-num";
           numSpan.dataset.swatchColor = p.color;
           numSpan.textContent = "1";
+          // 初期表示時にもフォントサイズを明示しておく。指定しないとブラウザの
+          // デフォルトサイズ（約16px）で表示され、後でupdateCounterUI()が呼ばれて
+          // swatchFontSize()による正しいサイズに切り替わった瞬間に、数字の太さ・
+          // 大きさが不自然に変化して見えてしまう。
+          numSpan.style.fontSize = swatchFontSize(1) + "px";
           sw.appendChild(numSpan);
           sw.addEventListener("click", () => selectColor(p.color));
           wrap.appendChild(sw);
@@ -770,9 +780,9 @@ self.addEventListener('fetch', function(e) {
             document.getElementById("drop-zone").style.display   = "none";
             document.getElementById("canvas-wrap").style.display = "block";
             document.getElementById("save-btn").disabled = false;
-            document.getElementById("undo-btn").disabled = true;
-            document.getElementById("prev-btn").disabled = false;
-            document.getElementById("next-btn").disabled = false;
+            undoBtnEl.disabled = true;
+            prevBtnEl.disabled = false;
+            nextBtnEl.disabled = false;
             document.getElementById("stamp-size").value  = 20;
             document.getElementById("size-val").textContent = "20";
             updateCounterUI();
@@ -825,7 +835,12 @@ self.addEventListener('fetch', function(e) {
                                 (canvasArea.clientHeight - 16) / vp0.height);
         if (fitOnLoad) { zoomScale = 1.0; panX = 0; panY = 0; }
 
-        let dpr = window.devicePixelRatio || 1;
+        // devicePixelRatioが低い（PCのChrome等で1のまま、またはウィンドウが
+        // 小さくbaseScaleが小さい）環境では、Canvas実ピクセル数が表示サイズと
+        // ほぼ同じになり、文字や線がぼやけて見える。最低でも1.5倍相当の
+        // 実効解像度を確保し、画質が必要以上に粗くならないようにする。
+        const MIN_EFFECTIVE_DPR = 1.5;
+        let dpr = Math.max(window.devicePixelRatio || 1, MIN_EFFECTIVE_DPR);
         let vp  = page.getViewport({ scale: baseScale * dpr });
         while ((vp.width > CANVAS_MAX_DIM || vp.height > CANVAS_MAX_DIM) && dpr > 1) {
           dpr = Math.max(1, dpr - 0.5);
@@ -852,8 +867,8 @@ self.addEventListener('fetch', function(e) {
           refreshStampDots(num);
         });
         document.getElementById("page-info-txt").textContent = `${num} / ${totalPages}`;
-        document.getElementById("prev-btn").disabled = num <= 1;
-        document.getElementById("next-btn").disabled = num >= totalPages;
+        prevBtnEl.disabled = num <= 1;
+        nextBtnEl.disabled = num >= totalPages;
         updateUndoBtn();
       }
 
@@ -1215,7 +1230,7 @@ self.addEventListener('fetch', function(e) {
       }
 
       function updateUndoBtn() {
-        document.getElementById("undo-btn").disabled = stampHistory.length === 0;
+        undoBtnEl.disabled = stampHistory.length === 0;
       }
 
       // ── 未保存データの復元確認 ────────────────────────────────────────────
@@ -1236,8 +1251,8 @@ self.addEventListener('fetch', function(e) {
         hasUnsavedChanges = true; // 復元した内容はまだ保存されていない状態として扱う
 
         updateCounterUI();
-        document.getElementById("prev-btn").disabled = currentPage <= 1;
-        document.getElementById("next-btn").disabled = currentPage >= totalPages;
+        prevBtnEl.disabled = currentPage <= 1;
+        nextBtnEl.disabled = currentPage >= totalPages;
         renderPage(currentPage, true).then(() => {
           showToast(`✅ 前回の作業を復元しました（${totalPages}ページ）`);
         });
@@ -1253,7 +1268,8 @@ self.addEventListener('fetch', function(e) {
       // ── スタンプサイズ変更 ────────────────────────────────────────────────
       function changeStampSize(delta) {
         const slider = document.getElementById("stamp-size");
-        const newVal = Math.max(parseInt(slider.min), Math.min(parseInt(slider.max), parseInt(slider.value) + delta));
+        const min = parseInt(slider.min), max = parseInt(slider.max);
+        const newVal = Math.max(min, Math.min(max, parseInt(slider.value) + delta));
         slider.value = newVal;
         document.getElementById("size-val").textContent = newVal;
       }
@@ -1269,8 +1285,8 @@ self.addEventListener('fetch', function(e) {
         // 連打中の見た目のチラつきを抑えるため、描画完了までボタンを一時的に無効化する。
         // レースコンディション自体はrenderPage内のrenderGenerationで防いでいるため、
         // ここでの無効化は保険・UX改善の役割（renderPage末尾で正しい状態に戻される）。
-        document.getElementById("prev-btn").disabled = true;
-        document.getElementById("next-btn").disabled = true;
+        prevBtnEl.disabled = true;
+        nextBtnEl.disabled = true;
         await renderPage(currentPage, false);
       }
 
