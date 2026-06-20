@@ -347,7 +347,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver0.93</div>
+    <div id="version-badge">ver0.94</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -405,7 +405,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v0.93";
+        const CACHE_NAME = "jstamp-v0.94";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -585,6 +585,51 @@ self.addEventListener('fetch', function(e) {
       // スタンプ数字のベースフォントサイズ（WebViewの最小フォントサイズ制限回避用）
       const STAMP_BASE_FONT = 16;
 
+      // ── UI更新ヘルパー ────────────────────────────────────────────────────
+
+      // 画面表示用：実際の文字幅をCanvasで測定し、円（直径sz）の内側に収まる
+      // 最大フォントサイズを返すために使う計測用Canvas。
+      // この下にあるinitPalette()のIIFE（即時実行される）がswatchFontSize()経由で
+      // measureStampFontSize()を呼ぶため、const宣言は必ずそれより前に置く
+      // （constは巻き上げされずTDZが発生するため、定義順を間違えると
+      // 「初期化前にアクセスした」というReferenceErrorでスクリプト全体が止まる）。
+      const _measureCanvas = document.createElement("canvas");
+      const _measureCtx    = _measureCanvas.getContext("2d");
+
+      // スウォッチ上の数字のフォントサイズを返す。
+      // 以前は桁数ごとに固定比率（1.7, 2.55で除算）で縮小していたが、
+      // この除数が実際の文字幅比率より過度に保守的だったため、桁数が増えるたびに
+      // 数字が極端に小さくなり、1桁との見た目の統一感が失われていた。
+      // スタンプ本体と同じ実測ベースのmeasureStampFontSize()を使うことで、
+      // 桁数が増えても自然な比率で縮小されるようにする。
+      function swatchFontSize(label, sz) {
+        return Math.floor(measureStampFontSize(String(label), sz));
+      }
+
+      // 桁数に応じた文字サイズ比率（savePDF専用。pdf-lib側はfont.widthOfTextAtSizeで別途正確に幅を測るため、
+      // ここは大まかな初期値としてのみ使用する）
+      function stampFRatio(digits) {
+        return digits >= 3 ? 0.44 : digits === 2 ? 0.56 : 0.68;
+      }
+
+      // 画面表示用：実際の文字幅をCanvasで測定し、円（直径sz）の内側に収まる
+      // 最大フォントサイズを返す。ブラウザ間（Chrome/iPad Safari）のフォント幅の
+      // 差異を吸収するため、固定比率ではなく実測値で計算する。
+      function measureStampFontSize(label, sz) {
+        const maxW = sz * 0.74; // 円内側に収める最大文字幅（直径の74%）
+        const maxH = sz * 0.62; // 縦方向の見た目バランスを保つ上限
+        let fSize = sz * 0.68;  // 1桁時の見た目に近い初期値から探索開始
+        _measureCtx.font = `900 ${fSize}px "Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif`;
+        let w = _measureCtx.measureText(label).width;
+        if (w > 0) fSize = fSize * Math.min(maxW / w, 1);
+        fSize = Math.min(fSize, maxH);
+        // 念のため再測定して微調整（フォントサイズ変更でメトリクスが多少非線形なため）
+        _measureCtx.font = `900 ${fSize}px "Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif`;
+        w = _measureCtx.measureText(label).width;
+        if (w > maxW) fSize *= maxW / w;
+        return Math.max(1, fSize);
+      }
+
       // ── カラーパレット初期化 ──────────────────────────────────────────────
       (function initPalette() {
         const wrap = document.getElementById("palette-wrap");
@@ -613,44 +658,6 @@ self.addEventListener('fetch', function(e) {
         document.getElementById("counter-circle").style.fontSize =
           swatchFontSize("1", COUNTER_CIRCLE_DIAMETER) + "px";
       })();
-
-      // ── UI更新ヘルパー ────────────────────────────────────────────────────
-
-      // スウォッチ上の数字のフォントサイズを返す。
-      // 以前は桁数ごとに固定比率（1.7, 2.55で除算）で縮小していたが、
-      // この除数が実際の文字幅比率より過度に保守的だったため、桁数が増えるたびに
-      // 数字が極端に小さくなり、1桁との見た目の統一感が失われていた。
-      // スタンプ本体と同じ実測ベースのmeasureStampFontSize()を使うことで、
-      // 桁数が増えても自然な比率で縮小されるようにする。
-      function swatchFontSize(label, sz) {
-        return Math.floor(measureStampFontSize(String(label), sz));
-      }
-
-      // 桁数に応じた文字サイズ比率（savePDF専用。pdf-lib側はfont.widthOfTextAtSizeで別途正確に幅を測るため、
-      // ここは大まかな初期値としてのみ使用する）
-      function stampFRatio(digits) {
-        return digits >= 3 ? 0.44 : digits === 2 ? 0.56 : 0.68;
-      }
-
-      // 画面表示用：実際の文字幅をCanvasで測定し、円（直径sz）の内側に収まる
-      // 最大フォントサイズを返す。ブラウザ間（Chrome/iPad Safari）のフォント幅の
-      // 差異を吸収するため、固定比率ではなく実測値で計算する。
-      const _measureCanvas = document.createElement("canvas");
-      const _measureCtx    = _measureCanvas.getContext("2d");
-      function measureStampFontSize(label, sz) {
-        const maxW = sz * 0.74; // 円内側に収める最大文字幅（直径の74%）
-        const maxH = sz * 0.62; // 縦方向の見た目バランスを保つ上限
-        let fSize = sz * 0.68;  // 1桁時の見た目に近い初期値から探索開始
-        _measureCtx.font = `900 ${fSize}px "Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif`;
-        let w = _measureCtx.measureText(label).width;
-        if (w > 0) fSize = fSize * Math.min(maxW / w, 1);
-        fSize = Math.min(fSize, maxH);
-        // 念のため再測定して微調整（フォントサイズ変更でメトリクスが多少非線形なため）
-        _measureCtx.font = `900 ${fSize}px "Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif`;
-        w = _measureCtx.measureText(label).width;
-        if (w > maxW) fSize *= maxW / w;
-        return Math.max(1, fSize);
-      }
 
       // カウンターサークルとパレット上の全数字を同期する
       function updateCounterUI() {
