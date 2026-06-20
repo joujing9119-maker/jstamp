@@ -347,7 +347,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver0.92</div>
+    <div id="version-badge">ver0.93</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -405,7 +405,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v0.92";
+        const CACHE_NAME = "jstamp-v0.93";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -490,6 +490,10 @@ self.addEventListener('fetch', function(e) {
         { color: "#f1c40f", label: "黄" },
         { color: "#9b59b6", label: "紫" },
       ];
+      // カラースウォッチの直径（px）。CSSの .color-swatch の width/height と一致させること。
+      const SWATCH_DIAMETER = 52;
+      // カウンターサークルの直径（px）。CSSの #counter-circle の width/height と一致させること。
+      const COUNTER_CIRCLE_DIAMETER = 52;
 
       // ── アプリ状態 ────────────────────────────────────────────────────────
       let pdfDoc           = null;
@@ -598,23 +602,28 @@ self.addEventListener('fetch', function(e) {
           // デフォルトサイズ（約16px）で表示され、後でupdateCounterUI()が呼ばれて
           // swatchFontSize()による正しいサイズに切り替わった瞬間に、数字の太さ・
           // 大きさが不自然に変化して見えてしまう。
-          numSpan.style.fontSize = swatchFontSize(1) + "px";
+          numSpan.style.fontSize = swatchFontSize("1", SWATCH_DIAMETER) + "px";
           sw.appendChild(numSpan);
           sw.addEventListener("click", () => selectColor(p.color));
           wrap.appendChild(sw);
         });
+        // カウンターサークルもスウォッチと同様、初期表示時にフォントサイズを
+        // 明示しておく（指定しないとCSSの固定値のままになり、updateCounterUI()
+        // が初めて呼ばれた瞬間に実測サイズへ切り替わって見た目が不自然に変化する）。
+        document.getElementById("counter-circle").style.fontSize =
+          swatchFontSize("1", COUNTER_CIRCLE_DIAMETER) + "px";
       })();
 
       // ── UI更新ヘルパー ────────────────────────────────────────────────────
 
-      // スウォッチ内径（直径52px、ボーダー3px×2 = 内径46px）に収まる最大フォントサイズを返す
-      function swatchFontSize(digits) {
-        const innerD   = 46;
-        const byHeight = innerD * 0.82;
-        const byWidth  = digits === 1 ? innerD * 0.72
-                       : digits === 2 ? innerD * 0.72 / 1.7
-                       :                innerD * 0.72 / 2.55;
-        return Math.max(7, Math.floor(Math.min(byHeight, byWidth)));
+      // スウォッチ上の数字のフォントサイズを返す。
+      // 以前は桁数ごとに固定比率（1.7, 2.55で除算）で縮小していたが、
+      // この除数が実際の文字幅比率より過度に保守的だったため、桁数が増えるたびに
+      // 数字が極端に小さくなり、1桁との見た目の統一感が失われていた。
+      // スタンプ本体と同じ実測ベースのmeasureStampFontSize()を使うことで、
+      // 桁数が増えても自然な比率で縮小されるようにする。
+      function swatchFontSize(label, sz) {
+        return Math.floor(measureStampFontSize(String(label), sz));
       }
 
       // 桁数に応じた文字サイズ比率（savePDF専用。pdf-lib側はfont.widthOfTextAtSizeで別途正確に幅を測るため、
@@ -650,14 +659,13 @@ self.addEventListener('fetch', function(e) {
         circle.style.borderColor = currentColor;
         circle.style.color       = currentColor;
         circle.textContent       = n;
-        const digits = String(n).length;
-        circle.style.fontSize = digits >= 3 ? "11px" : digits === 2 ? "14px" : "20px";
+        circle.style.fontSize    = swatchFontSize(n, COUNTER_CIRCLE_DIAMETER) + "px";
         PALETTE.forEach(p => {
           const span = document.querySelector(`.swatch-num[data-swatch-color="${p.color}"]`);
           if (span) {
             const v = colorCounters[p.color];
             span.textContent  = v;
-            span.style.fontSize = swatchFontSize(String(v).length) + "px";
+            span.style.fontSize = swatchFontSize(v, SWATCH_DIAMETER) + "px";
           }
         });
       }
