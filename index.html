@@ -214,6 +214,15 @@
         z-index: 300; display: none; align-items: center; justify-content: center; padding: 20px;
       }
       #filename-overlay.open { display: flex; }
+      #restore-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+        z-index: 300; display: none; align-items: center; justify-content: center; padding: 20px;
+      }
+      #restore-overlay.open { display: flex; }
+      #restore-desc {
+        font-size: 14px; color: rgba(255,255,255,0.75); text-align: center;
+        margin-bottom: 18px; line-height: 1.5;
+      }
       #filename-panel {
         background: #2a2a2a; border-radius: 18px; padding: 22px 20px 18px;
         box-shadow: 0 12px 60px rgba(0,0,0,0.7); width: min(340px, 100%);
@@ -264,8 +273,8 @@
         box-shadow: 0 2px 12px rgba(192,57,43,0.6);
       }
       #delete-mode-banner.show { display: block; }
-      .tb-icon-btn#delete-mode-btn.active { background: var(--accent); color: #fff; }
-      .tb-icon-btn#delete-mode-btn.active:active { background: var(--accent2); }
+      .tb-icon-btn.danger-active { background: var(--accent); color: #fff; }
+      .tb-icon-btn.danger-active:active { background: var(--accent2); }
     </style>
   </head>
   <body>
@@ -276,7 +285,7 @@
           <div class="dz-icon">📄</div>
           <h2>PDFファイルを選択してください</h2>
           <p>「PDF を開く」ボタンをタップして<br />スタンプを押すPDFを読み込みます</p>
-          <button class="btn-open-big" onclick="document.getElementById('file-input').click()">
+          <button class="btn-open-big" onclick="openFilePicker()">
             📂 PDF を開く
           </button>
         </div>
@@ -307,7 +316,7 @@
         </button>
         <div class="tb-divider"></div>
         <div class="tb-label">PDF</div>
-        <button class="tb-icon-btn accent" onclick="document.getElementById('file-input').click()" title="PDFを開く">
+        <button class="tb-icon-btn accent" onclick="openFilePicker()" title="PDFを開く">
           <span class="ib-icon">📂</span><span class="ib-txt">開く</span>
         </button>
         <button class="tb-icon-btn success" id="save-btn" disabled onclick="openSaveDialog()" title="PDFを保存">
@@ -335,7 +344,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver0.79</div>
+    <div id="version-badge">ver0.88</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -372,14 +381,28 @@
       </div>
     </div>
 
+    <div id="restore-overlay">
+      <div id="filename-panel">
+        <div id="filename-title">前回の作業が見つかりました</div>
+        <div id="restore-desc">保存されていないスタンプの配置が残っています。復元しますか？</div>
+        <div id="filename-btns">
+          <button class="fn-btn fn-cancel" onclick="declineRestore()">復元しない</button>
+          <button class="fn-btn fn-save" onclick="acceptRestore()">↺ 復元する</button>
+        </div>
+      </div>
+    </div>
+
     <div id="toast"></div>
     <input type="file" id="file-input" accept="application/pdf" onchange="loadPDF(this)" />
 
     <script>
+      // 新しいService Workerへの切替が保留中かどうか（作業中は安全のためリロードを待つ）
+      let pendingReload = false;
+
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v0.79";
+        const CACHE_NAME = "jstamp-v0.88";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -437,6 +460,20 @@ self.addEventListener('fetch', function(e) {
         } catch (e) {
           console.warn("[SW] Blob URL not supported:", e.message);
         }
+
+        // ホーム画面追加（standalone）では手動の更新ボタンが無いため、
+        // 新しいService Workerに切り替わったことを検知してフラグを立てる。
+        // ただし、作業中（未保存のスタンプがある）の状態でリロードすると
+        // メモリ上のスタンプが消えてしまうため、ここでは即リロードしない。
+        // 実際のリロードは openFilePicker()（「PDFを開く」ボタン押下時）で
+        // 未保存の変更がないことを確認したうえでのみ行う。
+        // 初回ロード（まだ何もコントロールしていない状態からの切替）では
+        // リロードが不要なため、その場合は何もしない。
+        const hadController = !!navigator.serviceWorker.controller;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (!hadController) return;
+          pendingReload = true;
+        });
       })();
 
       // ── pdf.js worker ─────────────────────────────────────────────────────
@@ -475,9 +512,63 @@ self.addEventListener('fetch', function(e) {
       let deleteMode        = false;
       // 直前の保存以降に未保存の変更があるかどうか
       let hasUnsavedChanges = false;
+      // 復元確認ダイアログ表示中、ユーザーの選択を待っているバックアップデータ
+      let pendingRestoreData = null;
 
       // 色ごとのカウンター（キー: color文字列, 値: 次に置く番号 1〜999）
       const colorCounters = Object.fromEntries(PALETTE.map(p => [p.color, 1]));
+
+      // ── スタンプデータの自動バックアップ（localStorage） ─────────────────
+      // アプリやデバイスの都合（強制終了・SW更新によるリロード・クラッシュ等）で
+      // 保存前のスタンプ位置データが失われることは絶対に避けたいため、
+      // スタンプを置く・消す・取り消すたびに即座にlocalStorageへ保存する。
+      // 保存対象はPDF本体ではなく、軽量なスタンプ座標データのみ
+      // （PDF本体はファイル名・サイズで同一性を判定する用途にのみ使う）。
+      const BACKUP_KEY = "jstamp_backup_v1";
+      function saveBackup() {
+        try {
+          const payload = {
+            fileName: originalFileName,
+            fileSize: originalPdfBytes ? originalPdfBytes.length : 0,
+            totalPages,
+            currentPage,
+            stamps,
+            stampHistory,
+            colorCounters,
+            savedAt: Date.now(),
+          };
+          localStorage.setItem(BACKUP_KEY, JSON.stringify(payload));
+        } catch (e) {
+          // 容量超過等で保存に失敗してもアプリ自体は継続させる（バックアップは保険のため）
+          console.warn("[backup] save failed:", e.message);
+        }
+      }
+
+      function loadBackupIfMatches(fileName, fileSize) {
+        try {
+          const raw = localStorage.getItem(BACKUP_KEY);
+          if (!raw) return null;
+          const data = JSON.parse(raw);
+          if (data.fileName === fileName && data.fileSize === fileSize) {
+            return data;
+          }
+        } catch (e) {
+          console.warn("[backup] load failed:", e.message);
+        }
+        return null;
+      }
+
+      function clearBackup() {
+        try { localStorage.removeItem(BACKUP_KEY); } catch (e) {}
+      }
+
+      // スタンプの追加・削除・Undoなど「データが変化した」操作の後は必ずこれを呼ぶ。
+      // hasUnsavedChangesの設定とバックアップ保存を1箇所にまとめることで、
+      // 将来の機能追加時に「フラグだけ立ててバックアップを忘れる」事故を防ぐ。
+      function markDataChanged() {
+        hasUnsavedChanges = true;
+        saveBackup();
+      }
 
       // スタンプ数字のベースフォントサイズ（WebViewの最小フォントサイズ制限回避用）
       const STAMP_BASE_FONT = 16;
@@ -513,9 +604,30 @@ self.addEventListener('fetch', function(e) {
         return Math.max(7, Math.floor(Math.min(byHeight, byWidth)));
       }
 
-      // 桁数に応じた文字サイズ比率（addDotDOM・savePDF共通）
+      // 桁数に応じた文字サイズ比率（savePDF専用。pdf-lib側はfont.widthOfTextAtSizeで別途正確に幅を測るため、
+      // ここは大まかな初期値としてのみ使用する）
       function stampFRatio(digits) {
         return digits >= 3 ? 0.44 : digits === 2 ? 0.56 : 0.68;
+      }
+
+      // 画面表示用：実際の文字幅をCanvasで測定し、円（直径sz）の内側に収まる
+      // 最大フォントサイズを返す。ブラウザ間（Chrome/iPad Safari）のフォント幅の
+      // 差異を吸収するため、固定比率ではなく実測値で計算する。
+      const _measureCanvas = document.createElement("canvas");
+      const _measureCtx    = _measureCanvas.getContext("2d");
+      function measureStampFontSize(label, sz) {
+        const maxW = sz * 0.74; // 円内側に収める最大文字幅（直径の74%）
+        const maxH = sz * 0.62; // 縦方向の見た目バランスを保つ上限
+        let fSize = sz * 0.68;  // 1桁時の見た目に近い初期値から探索開始
+        _measureCtx.font = `900 ${fSize}px "Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif`;
+        let w = _measureCtx.measureText(label).width;
+        if (w > 0) fSize = fSize * Math.min(maxW / w, 1);
+        fSize = Math.min(fSize, maxH);
+        // 念のため再測定して微調整（フォントサイズ変更でメトリクスが多少非線形なため）
+        _measureCtx.font = `900 ${fSize}px "Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif`;
+        w = _measureCtx.measureText(label).width;
+        if (w > maxW) fSize *= maxW / w;
+        return Math.max(1, fSize);
       }
 
       // カウンターサークルとパレット上の全数字を同期する
@@ -597,52 +709,134 @@ self.addEventListener('fetch', function(e) {
       }
 
       // ── PDF読み込み ───────────────────────────────────────────────────────
+      // 「PDFを開く」ボタンの実際の入口。新しいService Workerへの切替が
+      // 保留中で、かつ未保存の変更がない（＝何も失うものがない）場合は
+      // ここで安全にリロードしてから最新版でファイル選択を行う。
+      // 未保存の変更がある場合はリロードせず、そのまま通常通りファイルを開く。
+      function openFilePicker() {
+        if (pendingReload && !hasUnsavedChanges) {
+          pendingReload = false;
+          try { sessionStorage.setItem("jstamp_reopen_picker", "1"); } catch (e) {}
+          window.location.reload();
+          return;
+        }
+        document.getElementById("file-input").click();
+      }
+
       async function loadPDF(input) {
         const file = input.files[0];
         if (!file) return;
+        if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") {
+          showToast("⚠ PDFファイルを選択してください");
+          input.value = "";
+          return;
+        }
         showToast("読み込み中...");
-        originalFileName = file.name.replace(/\.pdf$/i, "") || "jstamp";
         const reader = new FileReader();
-        reader.onload = async (e) => {
-          const rawBuffer  = e.target.result;
-          originalPdfBytes = new Uint8Array(rawBuffer);
-          const pdfJsData  = originalPdfBytes.slice();
-          pdfDoc       = await pdfjsLib.getDocument({ data: pdfJsData }).promise;
-          totalPages   = pdfDoc.numPages;
-          currentPage  = 1;
-          stamps       = {};
-          stampHistory = [];
-          hasUnsavedChanges = false;
-          if (deleteMode) toggleDeleteMode();
-          PALETTE.forEach(p => { colorCounters[p.color] = 1; });
-          document.getElementById("drop-zone").style.display   = "none";
-          document.getElementById("canvas-wrap").style.display = "block";
-          document.getElementById("save-btn").disabled = false;
-          document.getElementById("undo-btn").disabled = true;
-          document.getElementById("prev-btn").disabled = false;
-          document.getElementById("next-btn").disabled = false;
-          document.getElementById("stamp-size").value  = 20;
-          document.getElementById("size-val").textContent = "20";
-          updateCounterUI();
-          await renderPage(currentPage, true);
-          showToast(`PDF 読み込み完了（${totalPages}ページ）`);
+
+        // ファイル読み込み自体の失敗（ストレージI/Oエラー等）に対するハンドリング。
+        // 未定義のままだと無音で失敗し、画面が「読み込み中...」のまま固まって見える。
+        reader.onerror = () => {
+          showToast("⚠ ファイルの読み込みに失敗しました");
+          input.value = "";
         };
+
+        reader.onload = async (e) => {
+          try {
+            const rawBuffer  = e.target.result;
+            const newBytes   = new Uint8Array(rawBuffer);
+            const pdfJsData  = newBytes.slice();
+
+            // 既存のPDFドキュメントが残っている場合、Worker側に保持された
+            // ページキャッシュ等のリソースを明示的に解放する。
+            // 代入だけではWorker側のメモリは解放されず、開き直すたびに蓄積していく。
+            if (pdfDoc && typeof pdfDoc.destroy === "function") {
+              pdfDoc.destroy();
+            }
+
+            const newDoc = await pdfjsLib.getDocument({ data: pdfJsData }).promise;
+
+            // ここまで到達して初めて状態を確定する（途中で例外が出ても前の状態を壊さない）
+            originalPdfBytes = newBytes;
+            originalFileName = file.name.replace(/\.pdf$/i, "") || "jstamp";
+            pdfDoc       = newDoc;
+            totalPages   = pdfDoc.numPages;
+            currentPage  = 1;
+            stamps       = {};
+            stampHistory = [];
+            hasUnsavedChanges = false;
+            if (deleteMode) toggleDeleteMode();
+            PALETTE.forEach(p => { colorCounters[p.color] = 1; });
+            document.getElementById("drop-zone").style.display   = "none";
+            document.getElementById("canvas-wrap").style.display = "block";
+            document.getElementById("save-btn").disabled = false;
+            document.getElementById("undo-btn").disabled = true;
+            document.getElementById("prev-btn").disabled = false;
+            document.getElementById("next-btn").disabled = false;
+            document.getElementById("stamp-size").value  = 20;
+            document.getElementById("size-val").textContent = "20";
+            updateCounterUI();
+            await renderPage(currentPage, true);
+
+            // 同じファイル（名前・サイズ一致）に対する未保存の作業がlocalStorageに
+            // 残っていれば、復元するかどうかをユーザーに確認する。
+            // アプリやデバイスの都合（強制終了・リロード等）でスタンプの位置データが
+            // 失われることを防ぐための最終防衛線。
+            const backup = loadBackupIfMatches(originalFileName, originalPdfBytes.length);
+            if (backup) {
+              pendingRestoreData = backup;
+              document.getElementById("restore-overlay").classList.add("open");
+            } else {
+              showToast(`PDF 読み込み完了（${totalPages}ページ）`);
+            }
+          } catch (err) {
+            console.error("[loadPDF] failed:", err);
+            showToast("⚠ このPDFを開けませんでした（破損または非対応の形式です）");
+            // 読込失敗時は安全な初期状態に戻す（中途半端な状態で操作不能になるのを防ぐ）
+            document.getElementById("drop-zone").style.display   = "flex";
+            document.getElementById("canvas-wrap").style.display = "none";
+          }
+        };
+
         reader.readAsArrayBuffer(file);
         input.value = "";
       }
 
       // ── ページ描画 ────────────────────────────────────────────────────────
+      // ページ送りの連打や読込中の操作で複数のrenderPageが並行して走った場合、
+      // 完了順序がクリック順序と前後し、古い描画が新しい描画を上書きする
+      // レースコンディションが起きうる。世代カウンタで「自分より新しい要求が
+      // 来ていたら自分の結果は捨てる」ガードを各awaitの直後に入れて防止する。
+      let renderGeneration = 0;
+      // Safari等のCanvas実装には一辺あたりおおむね4096px程度の上限があり、
+      // 大判PDF（A1/A0等）×高解像度端末（devicePixelRatioが高いiPad Pro等）の
+      // 組み合わせで超えると描画が真っ白になる危険がある。上限を超える場合は
+      // dprを段階的に下げ、それでも超えるなら表示スケール自体を縮小する。
+      const CANVAS_MAX_DIM = 4096;
       async function renderPage(num, fitOnLoad = false) {
+        const myGen = ++renderGeneration;
         const page   = await pdfDoc.getPage(num);
+        if (myGen !== renderGeneration) return;
+
         const canvas = document.getElementById("pdf-canvas");
         const ctx    = canvas.getContext("2d");
-        const area   = document.getElementById("canvas-area");
         const vp0    = page.getViewport({ scale: 1 });
-        baseScale    = Math.min((area.clientWidth - 16) / vp0.width,
-                                (area.clientHeight - 16) / vp0.height);
+        baseScale    = Math.min((canvasArea.clientWidth - 16) / vp0.width,
+                                (canvasArea.clientHeight - 16) / vp0.height);
         if (fitOnLoad) { zoomScale = 1.0; panX = 0; panY = 0; }
-        const dpr     = window.devicePixelRatio || 1;
-        const vp      = page.getViewport({ scale: baseScale * dpr });
+
+        let dpr = window.devicePixelRatio || 1;
+        let vp  = page.getViewport({ scale: baseScale * dpr });
+        while ((vp.width > CANVAS_MAX_DIM || vp.height > CANVAS_MAX_DIM) && dpr > 1) {
+          dpr = Math.max(1, dpr - 0.5);
+          vp  = page.getViewport({ scale: baseScale * dpr });
+        }
+        if (vp.width > CANVAS_MAX_DIM || vp.height > CANVAS_MAX_DIM) {
+          const shrink = CANVAS_MAX_DIM / Math.max(vp.width, vp.height);
+          baseScale *= shrink;
+          vp = page.getViewport({ scale: baseScale * dpr });
+        }
+
         canvas.width  = vp.width;
         canvas.height = vp.height;
         canvas.style.width  = (vp.width  / dpr) + "px";
@@ -650,8 +844,10 @@ self.addEventListener('fetch', function(e) {
         canvasW = vp.width  / dpr;
         canvasH = vp.height / dpr;
         await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        if (myGen !== renderGeneration) return;
         // DOMレイアウト確定後にtransformを適用して正確に中央配置
         requestAnimationFrame(() => {
+          if (myGen !== renderGeneration) return;
           applyTransform();
           refreshStampDots(num);
         });
@@ -662,13 +858,14 @@ self.addEventListener('fetch', function(e) {
       }
 
       // ── ズーム・パン ──────────────────────────────────────────────────────
+      const canvasArea = document.getElementById("canvas-area");
+      const canvasWrap = document.getElementById("canvas-wrap");
       function getAvailSize() {
-        const area = document.getElementById("canvas-area");
-        return { availW: area.clientWidth, availH: area.clientHeight };
+        return { availW: canvasArea.clientWidth, availH: canvasArea.clientHeight };
       }
 
       function applyTransform() {
-        const wrap = document.getElementById("canvas-wrap");
+        const wrap = canvasWrap;
         const { availW, availH } = getAvailSize();
         const scaledW = canvasW * zoomScale;
         const scaledH = canvasH * zoomScale;
@@ -702,11 +899,10 @@ self.addEventListener('fetch', function(e) {
       }
 
       function updateCursor(state) {
-        const wrap = document.getElementById("canvas-wrap");
-        if (deleteMode)             wrap.style.cursor = "not-allowed";
-        else if (state === "grabbing")  wrap.style.cursor = "grabbing";
-        else if (zoomScale > 1.05) wrap.style.cursor = "grab";
-        else                        wrap.style.cursor = "crosshair";
+        if (deleteMode)             canvasWrap.style.cursor = "not-allowed";
+        else if (state === "grabbing")  canvasWrap.style.cursor = "grabbing";
+        else if (zoomScale > 1.05) canvasWrap.style.cursor = "grab";
+        else                        canvasWrap.style.cursor = "crosshair";
       }
 
       let zoomBadgeTimer = null;
@@ -737,8 +933,6 @@ self.addEventListener('fetch', function(e) {
       let pinchStartPanY = null;
       let pinchStartMidX = null;
       let pinchStartMidY = null;
-
-      const canvasArea = document.getElementById("canvas-area");
 
       canvasArea.addEventListener("touchstart", (e) => {
         if (!pdfDoc) return;
@@ -858,8 +1052,7 @@ self.addEventListener('fetch', function(e) {
       document.addEventListener("mouseup", (e) => {
         if (isTouchDevice) return;
         if (mouseState === "drag_wait" && !mouseDragMoved) {
-          const wrap = document.getElementById("canvas-wrap");
-          const rect = wrap.getBoundingClientRect();
+          const rect = canvasWrap.getBoundingClientRect();
           if (pdfDoc && e.clientX >= rect.left && e.clientX <= rect.right &&
                         e.clientY >= rect.top  && e.clientY <= rect.bottom) {
             placeTapStamp(e.clientX, e.clientY);
@@ -888,8 +1081,7 @@ self.addEventListener('fetch', function(e) {
 
       // ── スタンプ配置・削除（タップ共通入口） ─────────────────────────────
       function placeTapStamp(clientX, clientY) {
-        const wrap = document.getElementById("canvas-wrap");
-        const rect = wrap.getBoundingClientRect();
+        const rect = canvasWrap.getBoundingClientRect();
         // canvas座標系（baseScale適用済みピクセル位置）
         const cx = (clientX - rect.left) / zoomScale;
         const cy = (clientY - rect.top)  / zoomScale;
@@ -909,7 +1101,7 @@ self.addEventListener('fetch', function(e) {
         if (!stamps[currentPage]) stamps[currentPage] = [];
         stamps[currentPage].push(stamp);
         stampHistory.push({ action: "place", pageNum: currentPage, stamp });
-        hasUnsavedChanges = true;
+        markDataChanged();
         addDotDOM(stamp, true);
         colorCounters[currentColor] = num >= 999 ? 1 : num + 1;
         updateCounterUI();
@@ -934,7 +1126,7 @@ self.addEventListener('fetch', function(e) {
         if (bestIdx === -1) return;
         const [removed] = list.splice(bestIdx, 1);
         stampHistory.push({ action: "delete", pageNum: currentPage, stamp: removed });
-        hasUnsavedChanges = true;
+        markDataChanged();
         refreshStampDots(currentPage);
         updateUndoBtn();
         showToast(`スタンプ「${removed.num}」を削除しました`);
@@ -943,7 +1135,7 @@ self.addEventListener('fetch', function(e) {
       // 削除モードのON/OFF切替
       function toggleDeleteMode() {
         deleteMode = !deleteMode;
-        document.getElementById("delete-mode-btn").classList.toggle("active", deleteMode);
+        document.getElementById("delete-mode-btn").classList.toggle("danger-active", deleteMode);
         document.getElementById("delete-mode-banner").classList.toggle("show", deleteMode);
         updateCursor();
       }
@@ -954,7 +1146,7 @@ self.addEventListener('fetch', function(e) {
       }
 
       function addDotDOM(s, isNew = false) {
-        const wrap   = document.getElementById("canvas-wrap");
+        const wrap   = canvasWrap;
         const dot    = document.createElement("div");
         dot.className = "stamp-dot" + (isNew ? " new-pop" : "");
         // PDF座標系 → CSS座標系（baseScale適用）
@@ -963,9 +1155,10 @@ self.addEventListener('fetch', function(e) {
         const dispSz = Math.round(s.pdfSize * baseScale);
         // dispSzが偶数になるよう保証（奇数だとサブピクセルで楕円になりやすい）
         const sz     = dispSz % 2 === 0 ? dispSz : dispSz + 1;
-        const digits     = String(s.num).length;
-        const fRatio     = stampFRatio(digits);
-        const fSize      = sz * fRatio;
+        const label      = String(s.num);
+        // 実際の文字幅を測定して円内に収まるフォントサイズを決定する（ブラウザ間の
+        // フォント幅の差異を吸収するため、固定比率ではなく実測値を使用）
+        const fSize      = measureStampFontSize(label, sz);
         const borderW    = Math.max(0.5, sz * 0.07);
         const fontScale  = Math.max(0.01, fSize / STAMP_BASE_FONT);
         dot.style.cssText =
@@ -980,7 +1173,7 @@ self.addEventListener('fetch', function(e) {
           `font-size:${STAMP_BASE_FONT}px;font-weight:900;line-height:1;` +
           `display:block;transform:scale(${fontScale});transform-origin:center center;` +
           `white-space:nowrap;pointer-events:none;user-select:none;flex-shrink:0;`;
-        span.textContent = s.num;
+        span.textContent = label;
         dot.appendChild(span);
         wrap.appendChild(dot);
       }
@@ -1011,6 +1204,8 @@ self.addEventListener('fetch', function(e) {
         if (pageNum === currentPage) {
           refreshStampDots(currentPage);
         }
+        // Undoもstamps/stampHistoryを変化させる操作のため、必ずバックアップを更新する
+        markDataChanged();
         updateUndoBtn();
         const pageNote = pageNum === currentPage ? "" : `（${pageNum}ページ目）`;
         const msg = action === "place"
@@ -1021,6 +1216,38 @@ self.addEventListener('fetch', function(e) {
 
       function updateUndoBtn() {
         document.getElementById("undo-btn").disabled = stampHistory.length === 0;
+      }
+
+      // ── 未保存データの復元確認 ────────────────────────────────────────────
+      // アプリやデバイスの都合（強制終了・リロード等）で保存前のスタンプ位置
+      // データが失われることは避けたいため、同じPDFを開いた際にバックアップが
+      // 見つかった場合はユーザーに確認のうえ復元する。
+      function acceptRestore() {
+        if (!pendingRestoreData) return;
+        const data = pendingRestoreData;
+        pendingRestoreData = null;
+        document.getElementById("restore-overlay").classList.remove("open");
+
+        stamps       = data.stamps || {};
+        stampHistory = data.stampHistory || [];
+        Object.assign(colorCounters, data.colorCounters || {});
+        const restorePage = Math.min(Math.max(1, data.currentPage || 1), totalPages);
+        currentPage = restorePage;
+        hasUnsavedChanges = true; // 復元した内容はまだ保存されていない状態として扱う
+
+        updateCounterUI();
+        document.getElementById("prev-btn").disabled = currentPage <= 1;
+        document.getElementById("next-btn").disabled = currentPage >= totalPages;
+        renderPage(currentPage, true).then(() => {
+          showToast(`✅ 前回の作業を復元しました（${totalPages}ページ）`);
+        });
+      }
+
+      function declineRestore() {
+        pendingRestoreData = null;
+        document.getElementById("restore-overlay").classList.remove("open");
+        clearBackup();
+        showToast(`PDF 読み込み完了（${totalPages}ページ）`);
       }
 
       // ── スタンプサイズ変更 ────────────────────────────────────────────────
@@ -1036,6 +1263,14 @@ self.addEventListener('fetch', function(e) {
         const next = currentPage + delta;
         if (next < 1 || next > totalPages) return;
         currentPage = next;
+        // ページをまたいだまま削除モードのつもりで誤って新規スタンプを消す
+        // 事故を防ぐため、ページ送り時は削除モードを自動でOFFにする。
+        if (deleteMode) toggleDeleteMode();
+        // 連打中の見た目のチラつきを抑えるため、描画完了までボタンを一時的に無効化する。
+        // レースコンディション自体はrenderPage内のrenderGenerationで防いでいるため、
+        // ここでの無効化は保険・UX改善の役割（renderPage末尾で正しい状態に戻される）。
+        document.getElementById("prev-btn").disabled = true;
+        document.getElementById("next-btn").disabled = true;
         await renderPage(currentPage, false);
       }
 
@@ -1078,16 +1313,50 @@ self.addEventListener('fetch', function(e) {
           for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
             const list = stamps[pageNum];
             if (!list || list.length === 0) continue;
-            const pdfPage          = pages[pageNum - 1];
-            const { width: pW, height: pH } = pdfPage.getSize();
+            const pdfPage = pages[pageNum - 1];
+            // PDFページに /Rotate（90/180/270度）が設定されている場合、
+            // pdf-libのgetSize()は回転前の生のMediaBoxサイズを返すのに対し、
+            // pdf.js（画面表示）のgetViewport()は回転を反映した見た目のサイズを
+            // 返すため、単純な比率計算だけだとスタンプの位置が画面表示と
+            // ズレてしまう（90度・270度では特に大きくズレる）。
+            // 回転角度を考慮して、見た目座標系→回転前の生PDF座標系へ変換する。
+            const rotation = ((pdfPage.getRotation().angle % 360) + 360) % 360;
+            const { width: rawW, height: rawH } = pdfPage.getSize();
+            const isSideways = rotation === 90 || rotation === 270;
+            // pW/pH は「見た目のページサイズ」（pdf.js側のvp0と揃える基準）
+            const pW = isSideways ? rawH : rawW;
+            const pH = isSideways ? rawW : rawH;
+
             // PDF本来のviewport（scale:1）サイズを取得して座標変換比を算出
-            const page             = await pdfDoc.getPage(pageNum);
-            const vp0              = page.getViewport({ scale: 1 });
-            const scaleX           = pW / vp0.width;
-            const scaleY           = pH / vp0.height;
+            const page    = await pdfDoc.getPage(pageNum);
+            const vp0     = page.getViewport({ scale: 1 });
+            const scaleX  = pW / vp0.width;
+            const scaleY  = pH / vp0.height;
             for (const s of list) {
-              const cx          = s.x * scaleX;
-              const cy          = pH - s.y * scaleY;          // y軸反転
+              // 見た目座標系（pdf.js基準、左上原点）→ Y軸反転した見た目座標
+              const vx = s.x * scaleX;
+              const vy = pH - s.y * scaleY;
+
+              // 回転角度に応じて、見た目座標系から「回転前の生PDF座標系」に変換する
+              let cx, cy;
+              switch (rotation) {
+                case 90:
+                  cx = vy;
+                  cy = rawH - vx;
+                  break;
+                case 180:
+                  cx = rawW - vx;
+                  cy = rawH - vy;
+                  break;
+                case 270:
+                  cx = rawW - vy;
+                  cy = vx;
+                  break;
+                default: // 0度（回転なし。従来通りの計算）
+                  cx = vx;
+                  cy = vy;
+              }
+
               const r           = (s.pdfSize / 2) * ((scaleX + scaleY) / 2);
               const [rr, gg, bb] = hexToRgb01(s.color);
               const strokeColor  = rgb(rr, gg, bb);
@@ -1099,8 +1368,14 @@ self.addEventListener('fetch', function(e) {
               const label  = String(s.num);
               const digits = label.length;
               const fRatio = stampFRatio(digits);
-              const fSize  = r * 2 * fRatio;
-              const tw     = font.widthOfTextAtSize(label, fSize);
+              let fSize    = r * 2 * fRatio;
+              // 実測した文字幅が円の直径からはみ出す場合はフォントサイズを縮小する
+              const maxTw  = r * 2 * 0.74;
+              let tw       = font.widthOfTextAtSize(label, fSize);
+              if (tw > maxTw) {
+                fSize *= maxTw / tw;
+                tw     = font.widthOfTextAtSize(label, fSize);
+              }
               const th     = font.heightAtSize(fSize) * 0.72;
               pdfPage.drawText(label, {
                 x: cx - tw / 2, y: cy - th / 2,
@@ -1135,7 +1410,11 @@ self.addEventListener('fetch', function(e) {
               } else {
                 const url = URL.createObjectURL(blob);
                 window.open(url, "_blank");
-                setTimeout(() => URL.revokeObjectURL(url), 10000);
+                // 固定時間後の解放はユーザーの操作タイミング（新タブでの保存操作等）と
+                // 噛み合わない可能性があるため、十分に長い時間（5分）を確保して解放する。
+                // 1回の保存操作ごとに1つしか生まれないため、この程度の遅延でもメモリを
+                // 圧迫し続けるリスクはない。
+                setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
               }
             }
           } else {
@@ -1153,6 +1432,7 @@ self.addEventListener('fetch', function(e) {
             showToast("保存をキャンセルしました");
           } else {
             hasUnsavedChanges = false;
+            clearBackup();
             showToast("✅ " + filename + " を保存しました");
           }
         } catch (err) {
@@ -1180,7 +1460,23 @@ self.addEventListener('fetch', function(e) {
       }
 
       // ── リサイズ対応 ──────────────────────────────────────────────────────
-      window.addEventListener("resize", () => { if (pdfDoc) renderPage(currentPage, false); });
+      // resizeは画面回転・Split View分割位置のドラッグなどで短時間に多数発火するため、
+      // 間引きなしでrenderPage（Canvas再描画+全スタンプDOM再生成）を都度呼ぶと、
+      // 処理が重複して走り、回転中のプチフリや描画の競合（古い描画が後から上書きする等）
+      // につながる。アニメーションが収まるのを待ってから1回だけ再描画する。
+      //
+      // また、画面回転やウィンドウサイズの大幅変更でbaseScale（基準倍率）が変わると、
+      // 既存のzoomScale・panX/panYは「古い基準」に対する値のままになり、
+      // 回転直後に意図しない場所が表示されてしまう。そのため fitOnLoad=true を渡し、
+      // 回転・リサイズ後は常にページ全体がフィットした状態に戻すようにする。
+      let resizeDebounceTimer = null;
+      window.addEventListener("resize", () => {
+        if (!pdfDoc) return;
+        clearTimeout(resizeDebounceTimer);
+        resizeDebounceTimer = setTimeout(() => {
+          renderPage(currentPage, true);
+        }, 200);
+      });
 
       // 未保存のスタンプがある状態で誤って閉じる事故を防ぐ確認ダイアログ
       window.addEventListener("beforeunload", (e) => {
@@ -1191,6 +1487,14 @@ self.addEventListener('fetch', function(e) {
       });
 
       updateCursor();
+
+      // 「開く」操作によるリロード後、自動でファイル選択ダイアログを再度開く
+      try {
+        if (sessionStorage.getItem("jstamp_reopen_picker") === "1") {
+          sessionStorage.removeItem("jstamp_reopen_picker");
+          setTimeout(() => document.getElementById("file-input").click(), 50);
+        }
+      } catch (e) {}
     </script>
   </body>
 </html>
