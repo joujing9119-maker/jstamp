@@ -20,6 +20,9 @@
       :root {
         --accent: #c0392b;
         --accent2: #e74c3c;
+        --success: #5dd47e;
+        --success-bg: #1e5e38;
+        --danger-text: #ff6b6b;
         --toolbar-bg: rgba(20, 20, 20, 0.82);
         --toolbar-blur: blur(12px);
         --right-w: 136px;
@@ -344,7 +347,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver0.90</div>
+    <div id="version-badge">ver0.91</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -402,7 +405,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v0.90";
+        const CACHE_NAME = "jstamp-v0.91";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -884,14 +887,17 @@ self.addEventListener('fetch', function(e) {
         const { availW, availH } = getAvailSize();
         const scaledW = canvasW * zoomScale;
         const scaledH = canvasH * zoomScale;
-        // 縮小表示時（画像が画面より小さい）はパン不要なのでその軸だけ0にクランプする。
-        // ズームが1.0をまたぐ瞬間に panX/panY を丸ごと0へ強制リセットすると、
-        // ピンチ操作中に画像が一瞬中央へ引き戻されてジャンプして見えるため、
-        // 「画面より小さい軸だけ」個別に0へクランプする方式に変更。
-        const maxPan  = availW + scaledW;
-        const maxPanY = availH + scaledH;
-        panX = scaledW <= availW ? 0 : Math.max(-maxPan,  Math.min(maxPan,  panX));
-        panY = scaledH <= availH ? 0 : Math.max(-maxPanY, Math.min(maxPanY, panY));
+        // panの可動域は「画像が画面より大きい分の半分」が本来の定義。
+        // 以前は scaledW <= availW で「0に強制」と「クランプ」を条件分岐していたが、
+        // この境界（画面アスペクト比とPDFアスペクト比の関係で105%や198%等、
+        // PDFや画面サイズに応じて毎回変わる倍率に出現する）をズーム中にまたぐ瞬間、
+        // panXが不連続に変化し、画像が一瞬ワープするように見えていた。
+        // range = Math.max(0, ...) という1つの連続的な式に統一することで、
+        // 境界をまたいでも滑らかにゼロへ収束し、ワープが起きないようにする。
+        const rangeX = Math.max(0, (scaledW - availW) / 2);
+        const rangeY = Math.max(0, (scaledH - availH) / 2);
+        panX = Math.max(-rangeX, Math.min(rangeX, panX));
+        panY = Math.max(-rangeY, Math.min(rangeY, panY));
         const cx = (availW - scaledW) / 2 + panX;
         const cy = (availH - scaledH) / 2 + panY;
         wrap.style.transform  = `translate(${cx}px, ${cy}px) scale(${zoomScale})`;
