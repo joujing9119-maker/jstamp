@@ -125,6 +125,19 @@
       .tb-icon-btn.success { color: #5dd47e; }
       .tb-icon-btn.accent { background: var(--accent); color: #fff; }
       .tb-icon-btn.accent:active { background: var(--accent2); }
+      /* Jtableへのワンタップ切り替えボタン（画面左下に固定表示、既存レイアウトに重ねる）。
+         Jtable側にも同じ仕組みでJスタンプへ戻るボタンを置いている。
+         z-indexは右ツールバー・下ツールバー(100/101)より高くしてあるので、その上に重なって見える。
+         保存ダイアログ等のモーダル(200以上)よりは低いので、モーダル表示中は隠れて操作の邪魔にならない。 */
+      .app-switch-fab {
+        position: fixed; left: 16px; bottom: 16px; z-index: 110;
+        width: 52px; height: 52px; border-radius: 50%;
+        background: linear-gradient(135deg, #8a63f2 0%, #5b3df0 100%);
+        color: #fff; display: flex; align-items: center; justify-content: center;
+        font-size: 24px; text-decoration: none;
+        box-shadow: 0 4px 15px rgba(91,61,240,0.4);
+      }
+      .app-switch-fab:active { transform: scale(0.92); }
       #palette-wrap { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 2px 4px; }
       .color-swatch {
         width: 52px; height: 52px; border-radius: 50%; border: 3px solid transparent;
@@ -325,11 +338,6 @@
         <button class="tb-icon-btn success" id="save-btn" disabled onclick="openSaveDialog()" title="PDFを保存">
           <span class="ib-icon">💾</span><span class="ib-txt">保存</span>
         </button>
-        <div class="tb-divider"></div>
-        <div class="tb-label">アプリ</div>
-        <a class="tb-icon-btn accent" href="https://joujing9119-maker.github.io/jtable/" style="text-decoration:none;" title="Jtableに切り替え">
-          <span class="ib-icon">📋</span><span class="ib-txt">Jtable</span>
-        </a>
       </div>
 
       <div id="toolbar-bottom">
@@ -1539,5 +1547,7 @@ self.addEventListener('fetch', function(e) {
         }
       } catch (e) {}
     </script>
+
+    <a class="app-switch-fab" href="https://joujing9119-maker.github.io/jtable/" title="Jtableに切り替え">📋</a>
   </body>
 </html>
