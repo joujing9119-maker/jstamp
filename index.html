@@ -125,12 +125,14 @@
       .tb-icon-btn.success { color: #5dd47e; }
       .tb-icon-btn.accent { background: var(--accent); color: #fff; }
       .tb-icon-btn.accent:active { background: var(--accent2); }
-      /* Jtableへのワンタップ切り替えボタン（画面左下に固定表示、既存レイアウトに重ねる）。
+      /* Jtableへのワンタップ切り替えボタン。
+         #canvas-area（PDF表示領域。右136px・下88pxは右ツールバー／下ツールバーが占めているため、
+         画面全体の左下ではなくcanvas-areaの左下に重なるよう、bottomに--bottom-h分のオフセットを加えている。
          Jtable側にも同じ仕組みでJスタンプへ戻るボタンを置いている。
          z-indexは右ツールバー・下ツールバー(100/101)より高くしてあるので、その上に重なって見える。
          保存ダイアログ等のモーダル(200以上)よりは低いので、モーダル表示中は隠れて操作の邪魔にならない。 */
       .app-switch-fab {
-        position: fixed; left: 16px; bottom: 16px; z-index: 110;
+        position: fixed; left: 16px; bottom: calc(var(--bottom-h) + 16px); z-index: 110;
         width: 52px; height: 52px; border-radius: 50%;
         background: linear-gradient(135deg, #8a63f2 0%, #5b3df0 100%);
         color: #fff; display: flex; align-items: center; justify-content: center;
