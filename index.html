@@ -110,12 +110,14 @@
       }
       #counter-label { font-size: 11px; color: rgba(255,255,255,0.5); text-align: center; }
       .tb-icon-btn {
-        width: 108px; height: 108px; border-radius: 14px; border: none;
+        width: 108px; height: 108px; min-width: 108px; max-width: 108px;
+        min-height: 108px; max-height: 108px; flex-shrink: 0; flex-grow: 0;
+        border-radius: 14px; border: none;
         background: rgba(255,255,255,0.08); color: #fff; font-size: 13px; font-weight: 700;
         cursor: pointer; display: flex; flex-direction: column; align-items: center;
         justify-content: center; gap: 5px; -webkit-tap-highlight-color: transparent;
         transition: background 0.12s, transform 0.1s; line-height: 1.2;
-        text-align: center; padding: 4px;
+        text-align: center; padding: 4px; overflow: hidden;
       }
       .tb-icon-btn:active { transform: scale(0.91); background: rgba(255,255,255,0.18); }
       .tb-icon-btn:disabled { opacity: 0.28; pointer-events: none; }
@@ -360,7 +362,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver0.95</div>
+    <div id="version-badge">ver0.96</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -418,7 +420,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v0.95";
+        const CACHE_NAME = "jstamp-v0.96";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
