@@ -97,7 +97,7 @@
         color: rgba(255,255,255,0.38); text-transform: uppercase;
         width: 100%; text-align: center; margin-top: 4px;
       }
-      .tb-divider { width: 116px; height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; }
+      .tb-divider { width: 108px; height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; }
       #counter-wrap {
         display: flex; flex-direction: column; align-items: center;
         gap: 4px; width: 100%; padding: 4px 0 2px; cursor: pointer;
@@ -110,7 +110,7 @@
       }
       #counter-label { font-size: 11px; color: rgba(255,255,255,0.5); text-align: center; }
       .tb-icon-btn {
-        width: 116px; height: 108px; border-radius: 14px; border: none;
+        width: 108px; height: 108px; border-radius: 14px; border: none;
         background: rgba(255,255,255,0.08); color: #fff; font-size: 13px; font-weight: 700;
         cursor: pointer; display: flex; flex-direction: column; align-items: center;
         justify-content: center; gap: 5px; -webkit-tap-highlight-color: transparent;
@@ -125,14 +125,12 @@
       .tb-icon-btn.success { color: #5dd47e; }
       .tb-icon-btn.accent { background: var(--accent); color: #fff; }
       .tb-icon-btn.accent:active { background: var(--accent2); }
-      /* Jtableへのワンタップ切り替えボタン。
-         #canvas-area（PDF表示領域。右136px・下88pxは右ツールバー／下ツールバーが占めているため、
-         画面全体の左下ではなくcanvas-areaの左下に重なるよう、bottomに--bottom-h分のオフセットを加えている。
+      /* Jtableへのワンタップ切り替えボタン（画面左下に固定表示、既存レイアウトに重ねる）。
          Jtable側にも同じ仕組みでJスタンプへ戻るボタンを置いている。
          z-indexは右ツールバー・下ツールバー(100/101)より高くしてあるので、その上に重なって見える。
          保存ダイアログ等のモーダル(200以上)よりは低いので、モーダル表示中は隠れて操作の邪魔にならない。 */
       .app-switch-fab {
-        position: fixed; left: 16px; bottom: calc(var(--bottom-h) + 16px); z-index: 110;
+        position: fixed; left: 16px; bottom: 16px; z-index: 110;
         width: 52px; height: 52px; border-radius: 50%;
         background: linear-gradient(135deg, #8a63f2 0%, #5b3df0 100%);
         color: #fff; display: flex; align-items: center; justify-content: center;
@@ -362,7 +360,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver0.94</div>
+    <div id="version-badge">ver0.95</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -420,7 +418,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v0.94";
+        const CACHE_NAME = "jstamp-v0.95";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
