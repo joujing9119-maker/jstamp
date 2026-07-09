@@ -25,20 +25,26 @@
         --danger-text: #ff6b6b;
         --toolbar-bg: rgba(20, 20, 20, 0.82);
         --toolbar-blur: blur(12px);
-        /* 右ツールバー幅・下ツールバー高さは、画面サイズに対する比率(vw/vh)を基準に
-           可変にする。clamp()で下限・上限を設けているのは、極端に小さい画面で
-           ボタンが押せないほど縮んだり、逆に大画面で間延びしすぎたりするのを防ぐため。
-           （iPad縦：768〜834vw程度、iPad横：1024〜1366vw程度を主な対象として調整） */
-        --right-w: clamp(92px, 11.5vw, 152px);
+        /* 右ツールバー内の正方形アイテム（カラースウォッチ／カウンターサークルの
+           直径、および戻す/削除/開く等の角丸ボタンの一辺）の基準サイズ。
+           画面幅に対する比率(vw)を基準に可変にし、clamp()で下限・上限を設けている
+           （極端に小さい画面でボタンが押せないほど縮んだり、大画面で間延びしすぎたり
+           するのを防ぐため）。
+           以前は逆に「まずツールバー幅(--right-w)を固定/可変で決めて、そこから
+           アイテムサイズを逆算する」順序だったため、108px角丸ボタンに合わせて
+           ツールバー幅が広がり、52pxのスウォッチ側にだけ左右の余白が目立って
+           見える結果になっていた。ここではアイテムサイズを先に決め、ツールバー幅は
+           「アイテム＋最小限の余白」として後から逆算することで、スウォッチと
+           ボタンの一辺の長さを完全に一致させ、左右の余白の差をなくす。 */
+        --tb-item: clamp(60px, 8vw, 100px);
+        --right-w: calc(var(--tb-item) + 20px);
         --bottom-h: clamp(60px, 8.5vh, 96px);
-        /* 右ツールバー内の丸ボタン（カラースウォッチ・カウンターサークル）と
-           角丸ボタン（戻す/削除/開く等）は、以前は52px・108pxの固定値だったため、
-           136px幅の列の中でスウォッチ側だけ左右の余白が大きく空いて見える問題が
-           あった。--right-wからそれぞれ独立した左右余白を引いた値をサイズとする
-           ことで、画面サイズが変わっても両者の余白の差が常に一定（小さいまま）に
-           保たれるようにする。 */
-        --swatch-d: calc(var(--right-w) - 24px);
-        --tb-btn-w: calc(var(--right-w) - 16px);
+        --swatch-d: var(--tb-item);
+        --tb-btn-w: var(--tb-item);
+        /* ボタン内のアイコン・文字サイズは--tb-itemに比例させつつ、アイテムが
+           小さい画面でも文字が読めなくなるほど縮まないようclamp()で下限を設ける。 */
+        --tb-icon-fs: clamp(20px, calc(var(--tb-item) * 0.315), 36px);
+        --tb-txt-fs:  clamp(10px, calc(var(--tb-item) * 0.12), 14px);
         /* 下ツールバーのページ送り・拡縮ボタンも、--bottom-hに対する比率で可変にする */
         --pg-btn-d: calc(var(--bottom-h) * 0.64);
       }
@@ -128,7 +134,7 @@
         width: var(--tb-btn-w); height: var(--tb-btn-w);
         border-radius: calc(var(--tb-btn-w) * 0.13); border: none;
         background: rgba(255,255,255,0.08); color: #fff;
-        font-size: calc(var(--tb-btn-w) * 0.12); font-weight: 700;
+        font-size: var(--tb-txt-fs); font-weight: 700;
         cursor: pointer; display: flex; flex-direction: column; align-items: center;
         justify-content: center; gap: calc(var(--tb-btn-w) * 0.045); -webkit-tap-highlight-color: transparent;
         transition: background 0.12s, transform 0.1s; line-height: 1.2;
@@ -136,8 +142,8 @@
       }
       .tb-icon-btn:active { transform: scale(0.91); background: rgba(255,255,255,0.18); }
       .tb-icon-btn:disabled { opacity: 0.28; pointer-events: none; }
-      .tb-icon-btn .ib-icon { font-size: calc(var(--tb-btn-w) * 0.315); line-height: 1; }
-      .tb-icon-btn .ib-txt { font-size: calc(var(--tb-btn-w) * 0.12); }
+      .tb-icon-btn .ib-icon { font-size: var(--tb-icon-fs); line-height: 1; }
+      .tb-icon-btn .ib-txt { font-size: var(--tb-txt-fs); }
       .tb-icon-btn.danger { color: #ff6b6b; }
       .tb-icon-btn.success { color: #5dd47e; }
       .tb-icon-btn.accent { background: var(--accent); color: #fff; }
@@ -382,7 +388,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver0.98</div>
+    <div id="version-badge">ver0.99</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -440,7 +446,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v0.98";
+        const CACHE_NAME = "jstamp-v0.99";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
