@@ -25,8 +25,22 @@
         --danger-text: #ff6b6b;
         --toolbar-bg: rgba(20, 20, 20, 0.82);
         --toolbar-blur: blur(12px);
-        --right-w: 136px;
-        --bottom-h: 88px;
+        /* 右ツールバー幅・下ツールバー高さは、画面サイズに対する比率(vw/vh)を基準に
+           可変にする。clamp()で下限・上限を設けているのは、極端に小さい画面で
+           ボタンが押せないほど縮んだり、逆に大画面で間延びしすぎたりするのを防ぐため。
+           （iPad縦：768〜834vw程度、iPad横：1024〜1366vw程度を主な対象として調整） */
+        --right-w: clamp(92px, 11.5vw, 152px);
+        --bottom-h: clamp(60px, 8.5vh, 96px);
+        /* 右ツールバー内の丸ボタン（カラースウォッチ・カウンターサークル）と
+           角丸ボタン（戻す/削除/開く等）は、以前は52px・108pxの固定値だったため、
+           136px幅の列の中でスウォッチ側だけ左右の余白が大きく空いて見える問題が
+           あった。--right-wからそれぞれ独立した左右余白を引いた値をサイズとする
+           ことで、画面サイズが変わっても両者の余白の差が常に一定（小さいまま）に
+           保たれるようにする。 */
+        --swatch-d: calc(var(--right-w) - 24px);
+        --tb-btn-w: calc(var(--right-w) - 16px);
+        /* 下ツールバーのページ送り・拡縮ボタンも、--bottom-hに対する比率で可変にする */
+        --pg-btn-d: calc(var(--bottom-h) * 0.64);
       }
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       html, body {
@@ -97,30 +111,33 @@
         color: rgba(255,255,255,0.38); text-transform: uppercase;
         width: 100%; text-align: center; margin-top: 4px;
       }
-      .tb-divider { width: 108px; height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; }
+      .tb-divider { width: var(--tb-btn-w); height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; }
       #counter-wrap {
         display: flex; flex-direction: column; align-items: center;
         gap: 4px; width: 100%; padding: 4px 0 2px; cursor: pointer;
       }
       #counter-circle {
-        width: 52px; height: 52px; border-radius: 50%; border: 3px solid var(--accent);
+        width: var(--swatch-d); height: var(--swatch-d); border-radius: 50%;
+        border: calc(var(--swatch-d) * 0.058) solid var(--accent);
         display: flex; align-items: center; justify-content: center;
         font-weight: 900; color: var(--accent); background: transparent;
         font-size: 20px; transition: border-color 0.2s, color 0.2s; flex-shrink: 0;
       }
       #counter-label { font-size: 11px; color: rgba(255,255,255,0.5); text-align: center; }
       .tb-icon-btn {
-        width: 108px; height: 108px; border-radius: 14px; border: none;
-        background: rgba(255,255,255,0.08); color: #fff; font-size: 13px; font-weight: 700;
+        width: var(--tb-btn-w); height: var(--tb-btn-w);
+        border-radius: calc(var(--tb-btn-w) * 0.13); border: none;
+        background: rgba(255,255,255,0.08); color: #fff;
+        font-size: calc(var(--tb-btn-w) * 0.12); font-weight: 700;
         cursor: pointer; display: flex; flex-direction: column; align-items: center;
-        justify-content: center; gap: 5px; -webkit-tap-highlight-color: transparent;
+        justify-content: center; gap: calc(var(--tb-btn-w) * 0.045); -webkit-tap-highlight-color: transparent;
         transition: background 0.12s, transform 0.1s; line-height: 1.2;
-        text-align: center; padding: 4px;
+        text-align: center; padding: calc(var(--tb-btn-w) * 0.035);
       }
       .tb-icon-btn:active { transform: scale(0.91); background: rgba(255,255,255,0.18); }
       .tb-icon-btn:disabled { opacity: 0.28; pointer-events: none; }
-      .tb-icon-btn .ib-icon { font-size: 34px; line-height: 1; }
-      .tb-icon-btn .ib-txt { font-size: 13px; }
+      .tb-icon-btn .ib-icon { font-size: calc(var(--tb-btn-w) * 0.315); line-height: 1; }
+      .tb-icon-btn .ib-txt { font-size: calc(var(--tb-btn-w) * 0.12); }
       .tb-icon-btn.danger { color: #ff6b6b; }
       .tb-icon-btn.success { color: #5dd47e; }
       .tb-icon-btn.accent { background: var(--accent); color: #fff; }
@@ -144,7 +161,8 @@
       .app-switch-fab:active { transform: scale(0.92); }
       #palette-wrap { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 2px 4px; }
       .color-swatch {
-        width: 52px; height: 52px; border-radius: 50%; border: 3px solid transparent;
+        width: var(--swatch-d); height: var(--swatch-d); border-radius: 50%;
+        border: calc(var(--swatch-d) * 0.058) solid transparent;
         cursor: pointer; transition: transform 0.14s, border-color 0.14s, box-shadow 0.14s;
         -webkit-tap-highlight-color: transparent; flex-shrink: 0;
         display: flex; align-items: center; justify-content: center;
@@ -154,21 +172,21 @@
         font-weight: 900; color: #fff; pointer-events: none; user-select: none;
         text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.9); line-height: 1;
       }
-      .tb-vdivider { width: 1px; height: 44px; background: rgba(255,255,255,0.12); margin: 0 4px; flex-shrink: 0; }
+      .tb-vdivider { width: 1px; height: calc(var(--bottom-h) * 0.5); background: rgba(255,255,255,0.12); margin: 0 4px; flex-shrink: 0; }
       .slider-group { display: flex; align-items: center; gap: 8px; flex: 1; }
-      .slider-group label { font-size: 13px; color: rgba(255,255,255,0.5); white-space: nowrap; }
+      .slider-group label { font-size: calc(var(--bottom-h) * 0.148); color: rgba(255,255,255,0.5); white-space: nowrap; }
       .slider-group input[type="range"] { flex: 1; accent-color: var(--accent); height: 6px; min-width: 60px; }
-      .slider-val { font-size: 16px; font-weight: 700; color: #fff; min-width: 36px; text-align: center; }
+      .slider-val { font-size: calc(var(--bottom-h) * 0.182); font-weight: 700; color: #fff; min-width: 36px; text-align: center; }
       .pg-btn {
-        width: 56px; height: 56px; border-radius: 12px;
+        width: var(--pg-btn-d); height: var(--pg-btn-d); border-radius: calc(var(--pg-btn-d) * 0.21);
         border: 1.5px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.07);
-        color: #fff; font-size: 22px; cursor: pointer; display: flex;
+        color: #fff; font-size: calc(var(--pg-btn-d) * 0.39); cursor: pointer; display: flex;
         align-items: center; justify-content: center;
         -webkit-tap-highlight-color: transparent; transition: background 0.12s, transform 0.1s; flex-shrink: 0;
       }
       .pg-btn:active { transform: scale(0.91); background: rgba(255,255,255,0.18); }
       .pg-btn:disabled { opacity: 0.25; pointer-events: none; }
-      #page-info-txt { font-size: 15px; font-weight: 700; color: #fff; white-space: nowrap; min-width: 56px; text-align: center; }
+      #page-info-txt { font-size: calc(var(--bottom-h) * 0.17); font-weight: 700; color: #fff; white-space: nowrap; min-width: 56px; text-align: center; }
       #zoom-badge {
         position: fixed; top: 12px; left: 50%;
         transform: translateX(-50%) translateY(-60px);
@@ -364,7 +382,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver0.97</div>
+    <div id="version-badge">ver0.98</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -422,7 +440,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v0.97";
+        const CACHE_NAME = "jstamp-v0.98";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -507,10 +525,15 @@ self.addEventListener('fetch', function(e) {
         { color: "#f1c40f", label: "黄" },
         { color: "#9b59b6", label: "紫" },
       ];
-      // カラースウォッチの直径（px）。CSSの .color-swatch の width/height と一致させること。
-      const SWATCH_DIAMETER = 52;
-      // カウンターサークルの直径（px）。CSSの #counter-circle の width/height と一致させること。
-      const COUNTER_CIRCLE_DIAMETER = 52;
+      // カラースウォッチ・カウンターサークルの直径は、CSS変数 --swatch-d が
+      // 画面幅に応じて可変（vw基準）になったため、固定px定数では実際の表示サイズと
+      // ずれてしまう。実際にDOMへ描画された要素のサイズをgetBoundingClientRect()で
+      // 都度測定することで、画面サイズが変わっても数字のフォントサイズが正しく
+      // 円の内側に収まるようにする。
+      function getSwatchDiameter(el) {
+        const d = el ? el.getBoundingClientRect().width : 0;
+        return d > 0 ? d : 52; // 万一未描画で0が返る場合のフォールバック
+      }
 
       // ── アプリ状態 ────────────────────────────────────────────────────────
       let pdfDoc           = null;
@@ -821,36 +844,41 @@ self.addEventListener('fetch', function(e) {
           numSpan.className = "swatch-num";
           numSpan.dataset.swatchColor = p.color;
           numSpan.textContent = "1";
+          sw.appendChild(numSpan);
+          sw.addEventListener("click", () => selectColor(p.color));
+          wrap.appendChild(sw);
           // 初期表示時にもフォントサイズを明示しておく。指定しないとブラウザの
           // デフォルトサイズ（約16px）で表示され、後でupdateCounterUI()が呼ばれて
           // swatchFontSize()による正しいサイズに切り替わった瞬間に、数字の太さ・
           // 大きさが不自然に変化して見えてしまう。
-          numSpan.style.fontSize = swatchFontSize("1", SWATCH_DIAMETER) + "px";
-          sw.appendChild(numSpan);
-          sw.addEventListener("click", () => selectColor(p.color));
-          wrap.appendChild(sw);
+          // --swatch-dは画面幅基準の可変値のため、DOMへ挿入し実際にレイアウトが
+          // 確定した後（wrap.appendChild後）にgetBoundingClientRect()で実測する。
+          numSpan.style.fontSize = swatchFontSize("1", getSwatchDiameter(sw)) + "px";
         });
         // カウンターサークルもスウォッチと同様、初期表示時にフォントサイズを
         // 明示しておく（指定しないとCSSの固定値のままになり、updateCounterUI()
         // が初めて呼ばれた瞬間に実測サイズへ切り替わって見た目が不自然に変化する）。
-        document.getElementById("counter-circle").style.fontSize =
-          swatchFontSize("1", COUNTER_CIRCLE_DIAMETER) + "px";
+        const counterEl = document.getElementById("counter-circle");
+        counterEl.style.fontSize = swatchFontSize("1", getSwatchDiameter(counterEl)) + "px";
       })();
 
-      // カウンターサークルとパレット上の全数字を同期する
+      // カウンターサークルとパレット上の全数字を同期する。
+      // 画面回転・リサイズで --right-w（延いては --swatch-d）が変わった後にも
+      // 呼び直すことで、常に実際の円サイズに合ったフォントサイズを保つ
+      // （resizeイベント側の処理を参照）。
       function updateCounterUI() {
         const n      = colorCounters[currentColor];
         const circle = document.getElementById("counter-circle");
         circle.style.borderColor = currentColor;
         circle.style.color       = currentColor;
         circle.textContent       = n;
-        circle.style.fontSize    = swatchFontSize(n, COUNTER_CIRCLE_DIAMETER) + "px";
+        circle.style.fontSize    = swatchFontSize(n, getSwatchDiameter(circle)) + "px";
         PALETTE.forEach(p => {
           const span = document.querySelector(`.swatch-num[data-swatch-color="${p.color}"]`);
           if (span) {
             const v = colorCounters[p.color];
             span.textContent  = v;
-            span.style.fontSize = swatchFontSize(v, SWATCH_DIAMETER) + "px";
+            span.style.fontSize = swatchFontSize(v, getSwatchDiameter(span.parentElement)) + "px";
           }
         });
       }
@@ -1685,12 +1713,18 @@ self.addEventListener('fetch', function(e) {
       // 既存のzoomScale・panX/panYは「古い基準」に対する値のままになり、
       // 回転直後に意図しない場所が表示されてしまう。そのため fitOnLoad=true を渡し、
       // 回転・リサイズ後は常にページ全体がフィットした状態に戻すようにする。
+      //
+      // ver0.98：--right-w（延いては--swatch-d）が画面幅基準の可変値になったため、
+      // リサイズ・回転でツールバー幅が変わるとスウォッチ・カウンターサークルの円の
+      // 実サイズも変わる。updateCounterUI()を呼び直して数字のフォントサイズを
+      // 実際の円サイズに追従させる（PDF未読込＝drop-zone表示中でも必要なため、
+      // pdfDocの有無に関わらず常に実行する）。
       let resizeDebounceTimer = null;
       window.addEventListener("resize", () => {
-        if (!pdfDoc) return;
         clearTimeout(resizeDebounceTimer);
         resizeDebounceTimer = setTimeout(() => {
-          renderPage(currentPage, true);
+          updateCounterUI();
+          if (pdfDoc) renderPage(currentPage, true);
         }, 200);
       });
 
