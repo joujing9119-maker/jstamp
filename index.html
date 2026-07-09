@@ -27,7 +27,6 @@
         --toolbar-blur: blur(12px);
         --right-w: 136px;
         --bottom-h: 88px;
-        --tb-btn-size: 108px;
       }
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       html, body {
@@ -98,7 +97,7 @@
         color: rgba(255,255,255,0.38); text-transform: uppercase;
         width: 100%; text-align: center; margin-top: 4px;
       }
-      .tb-divider { width: var(--tb-btn-size); height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; }
+      .tb-divider { width: 108px; height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; }
       #counter-wrap {
         display: flex; flex-direction: column; align-items: center;
         gap: 4px; width: 100%; padding: 4px 0 2px; cursor: pointer;
@@ -111,32 +110,31 @@
       }
       #counter-label { font-size: 11px; color: rgba(255,255,255,0.5); text-align: center; }
       .tb-icon-btn {
-        width: var(--tb-btn-size); height: var(--tb-btn-size);
-        min-width: var(--tb-btn-size); max-width: var(--tb-btn-size);
-        min-height: var(--tb-btn-size); max-height: var(--tb-btn-size);
-        flex-shrink: 0; flex-grow: 0;
-        border-radius: 14px; border: none;
-        background: rgba(255,255,255,0.08); color: #fff;
-        font-size: calc(var(--tb-btn-size) * 0.12); font-weight: 700;
+        width: 108px; height: 108px; border-radius: 14px; border: none;
+        background: rgba(255,255,255,0.08); color: #fff; font-size: 13px; font-weight: 700;
         cursor: pointer; display: flex; flex-direction: column; align-items: center;
-        justify-content: center; gap: calc(var(--tb-btn-size) * 0.045); -webkit-tap-highlight-color: transparent;
+        justify-content: center; gap: 5px; -webkit-tap-highlight-color: transparent;
         transition: background 0.12s, transform 0.1s; line-height: 1.2;
-        text-align: center; padding: calc(var(--tb-btn-size) * 0.04); overflow: hidden;
+        text-align: center; padding: 4px;
       }
       .tb-icon-btn:active { transform: scale(0.91); background: rgba(255,255,255,0.18); }
       .tb-icon-btn:disabled { opacity: 0.28; pointer-events: none; }
-      .tb-icon-btn .ib-icon { font-size: calc(var(--tb-btn-size) * 0.40); line-height: 1; }
-      .tb-icon-btn .ib-txt { font-size: calc(var(--tb-btn-size) * 0.145); }
+      .tb-icon-btn .ib-icon { font-size: 34px; line-height: 1; }
+      .tb-icon-btn .ib-txt { font-size: 13px; }
       .tb-icon-btn.danger { color: #ff6b6b; }
       .tb-icon-btn.success { color: #5dd47e; }
       .tb-icon-btn.accent { background: var(--accent); color: #fff; }
       .tb-icon-btn.accent:active { background: var(--accent2); }
-      /* Jtableへのワンタップ切り替えボタン（画面左下に固定表示、既存レイアウトに重ねる）。
+      /* Jtableへのワンタップ切り替えボタン。
          Jtable側にも同じ仕組みでJスタンプへ戻るボタンを置いている。
-         z-indexは右ツールバー・下ツールバー(100/101)より高くしてあるので、その上に重なって見える。
+         以前はbottom:16pxで画面左下に固定していたが、下ツールバー（#toolbar-bottom、
+         高さ--bottom-h=88px）と重なって見えてしまっていたため、下ツールバーの
+         「上」＝canvas-area内の左下に来るよう bottom: calc(var(--bottom-h) + 16px) に変更。
+         z-indexは右ツールバー・下ツールバー(100/101)より高いままにしてあるので、
+         canvas-areaの内容（PDF・スタンプ）の上には重なって見える。
          保存ダイアログ等のモーダル(200以上)よりは低いので、モーダル表示中は隠れて操作の邪魔にならない。 */
       .app-switch-fab {
-        position: fixed; left: 16px; bottom: 16px; z-index: 110;
+        position: fixed; left: 16px; bottom: calc(var(--bottom-h) + 16px); z-index: 110;
         width: 52px; height: 52px; border-radius: 50%;
         background: linear-gradient(135deg, #8a63f2 0%, #5b3df0 100%);
         color: #fff; display: flex; align-items: center; justify-content: center;
@@ -599,6 +597,167 @@ self.addEventListener('fetch', function(e) {
       function markDataChanged() {
         hasUnsavedChanges = true;
         saveBackup();
+      }
+
+      // ── アプリ切り替え（Jtable⇔Jスタンプ）時のPDF引き継ぎ ─────────────────
+      // 画面左下の app-switch-fab リンクでJtableへ移動すると、通常のページ遷移
+      // （別URLへのフルリロード）になるため、そのままではメモリ上のPDF・スタンプ
+      // 状態はすべて失われる。これを防ぐため、リンクをタップした瞬間に「今開いている
+      // PDFの中身そのもの＋スタンプデータ」をIndexedDBへ保存し、Jtable側の「Jスタンプへ
+      // 戻る」ボタンで本アプリに戻ってきた際に自動で復元する。
+      //
+      // localStorageではなくIndexedDBを使う理由：現場で使うPDF（図面等）は
+      // 数十MBになることがあり、base64化してlocalStorageに入れると文字数上限
+      // （多くの環境で5〜10MB程度）を超える恐れがある。IndexedDBはバイナリを
+      // そのまま保存でき、容量上限も大幅に大きいため採用した。
+      //
+      // 【重要な前提・未検証事項】
+      // IndexedDBはブラウザの「オリジン」（スキーム+ホスト+ポート）単位で分離される。
+      // JスタンプとJtableは同じオリジン（joujing9119-maker.github.io）配下の別パス
+      // なので、通常のSafariタブ間であればこの引き継ぎは問題なく機能する。
+      // ただし、iPadで両方を個別に「ホーム画面に追加」して2つの独立したアプリ
+      // アイコンとして運用している場合、iOSの実装によってはホーム画面アプリごとに
+      // ストレージ（IndexedDB/localStorage）が分離され、同一オリジンでも共有され
+      // ない可能性がある（iOSのバージョンや実装により挙動が変わりうる、と報告されている
+      // 領域）。この点は実機での動作確認が取れていないため、SPEC.mdの
+      // 「未解決・引き続き注意すべき点」に明記してある。もし実機で引き継ぎが
+      // 機能しない場合はユーザーに確認のうえ別方式（例：URLパラメータでの受け渡し等）
+      // を検討する必要がある。
+      const HANDOFF_DB_NAME = "jstamp_handoff_db";
+      const HANDOFF_STORE   = "state";
+      const HANDOFF_KEY     = "current";
+      // 直前にこのタブでFAB経由の切り替えが起きたことを示すセッションフラグ。
+      // これが立っている場合のみ、ページ読み込み時に自動復元を試みる
+      // （単なる通常起動時にまで毎回自動復元してしまうと、ユーザーが意図的に
+      // 別のPDFを開こうとした場合に混乱するため、切り替え直後に限定する）。
+      const HANDOFF_FLAG_KEY = "jstamp_returning_from_switch";
+      // 意図的なアプリ切り替え遷移中は、beforeunloadの「未保存の変更があります」
+      // 警告を出さない（データはこの後IndexedDBへ保存されるため、実質的に失われない）。
+      let switchingApps = false;
+
+      function openHandoffDB() {
+        return new Promise((resolve, reject) => {
+          if (!("indexedDB" in window)) { reject(new Error("indexedDB unsupported")); return; }
+          const req = indexedDB.open(HANDOFF_DB_NAME, 1);
+          req.onupgradeneeded = () => {
+            if (!req.result.objectStoreNames.contains(HANDOFF_STORE)) {
+              req.result.createObjectStore(HANDOFF_STORE);
+            }
+          };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror   = () => reject(req.error);
+        });
+      }
+
+      // 現在のPDF・スタンプ状態をまるごとIndexedDBへ保存する。
+      // PDFが開かれていない（drop-zone状態）場合は、古い引き継ぎデータが
+      // 残らないよう明示的にクリアしてから抜ける。
+      async function saveHandoff() {
+        if (!pdfDoc || !originalPdfBytes) {
+          await clearHandoff();
+          return;
+        }
+        try {
+          const db = await openHandoffDB();
+          const payload = {
+            fileName: originalFileName,
+            pdfBytes: originalPdfBytes.buffer.slice(
+              originalPdfBytes.byteOffset,
+              originalPdfBytes.byteOffset + originalPdfBytes.byteLength
+            ),
+            totalPages, currentPage, stamps, stampHistory, colorCounters,
+            hasUnsavedChanges,
+            savedAt: Date.now(),
+          };
+          await new Promise((resolve, reject) => {
+            const tx = db.transaction(HANDOFF_STORE, "readwrite");
+            tx.objectStore(HANDOFF_STORE).put(payload, HANDOFF_KEY);
+            tx.oncomplete = resolve;
+            tx.onerror    = () => reject(tx.error);
+          });
+        } catch (e) {
+          // 保存に失敗しても切り替え自体は止めない（保険的な機能のため）
+          console.warn("[handoff] save failed:", e.message);
+        }
+      }
+
+      async function loadHandoff() {
+        try {
+          const db = await openHandoffDB();
+          return await new Promise((resolve, reject) => {
+            const tx  = db.transaction(HANDOFF_STORE, "readonly");
+            const req = tx.objectStore(HANDOFF_STORE).get(HANDOFF_KEY);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror   = () => reject(req.error);
+          });
+        } catch (e) {
+          console.warn("[handoff] load failed:", e.message);
+          return null;
+        }
+      }
+
+      async function clearHandoff() {
+        try {
+          const db = await openHandoffDB();
+          const tx = db.transaction(HANDOFF_STORE, "readwrite");
+          tx.objectStore(HANDOFF_STORE).delete(HANDOFF_KEY);
+        } catch (e) {}
+      }
+
+      // Jtableへの切り替えリンクがタップされた際の処理。
+      // 通常のページ遷移を一旦止め、状態をIndexedDBに保存してから遷移する。
+      async function handleAppSwitch(e) {
+        e.preventDefault();
+        const url = e.currentTarget.href;
+        switchingApps = true;
+        try { sessionStorage.setItem(HANDOFF_FLAG_KEY, "1"); } catch (err) {}
+        await saveHandoff();
+        window.location.href = url;
+      }
+
+      // 「Jtableから戻ってきた直後」の場合のみ、保存しておいたPDF・スタンプ状態を
+      // 自動で復元する（ファイル選択ダイアログを経由せず、直接canvasに表示する）。
+      async function tryRestoreHandoffIfReturning() {
+        let returning = false;
+        try { returning = sessionStorage.getItem(HANDOFF_FLAG_KEY) === "1"; } catch (e) {}
+        if (!returning) return;
+        try { sessionStorage.removeItem(HANDOFF_FLAG_KEY); } catch (e) {}
+
+        const data = await loadHandoff();
+        if (!data || !data.pdfBytes) return;
+
+        try {
+          const bytes      = new Uint8Array(data.pdfBytes);
+          const pdfJsData  = bytes.slice();
+          if (pdfDoc && typeof pdfDoc.destroy === "function") pdfDoc.destroy();
+          const newDoc = await pdfjsLib.getDocument({ data: pdfJsData }).promise;
+
+          originalPdfBytes = bytes;
+          originalFileName = data.fileName || "jstamp";
+          pdfDoc       = newDoc;
+          totalPages   = pdfDoc.numPages;
+          currentPage  = Math.min(Math.max(1, data.currentPage || 1), totalPages);
+          stamps       = data.stamps || {};
+          stampHistory = data.stampHistory || [];
+          Object.assign(colorCounters, data.colorCounters || {});
+          hasUnsavedChanges = !!data.hasUnsavedChanges;
+          if (deleteMode) toggleDeleteMode();
+
+          document.getElementById("drop-zone").style.display   = "none";
+          document.getElementById("canvas-wrap").style.display = "block";
+          document.getElementById("save-btn").disabled = false;
+          undoBtnEl.disabled = stampHistory.length === 0;
+          prevBtnEl.disabled = false;
+          nextBtnEl.disabled = false;
+          updateCounterUI();
+          // 画面回転・リサイズ時と同じ考え方で、常にフィット表示から再開する
+          // （切り替え元とJtable滞在中で画面サイズ・向きが変わっている可能性があるため）。
+          await renderPage(currentPage, true);
+          showToast(`Jtableから戻りました（続きから再開：${totalPages}ページ）`);
+        } catch (err) {
+          console.error("[handoff] restore failed:", err);
+          showToast("⚠ 前の画面のPDFを復元できませんでした");
+        }
       }
 
       // スタンプ数字のベースフォントサイズ（WebViewの最小フォントサイズ制限回避用）
@@ -1535,9 +1694,13 @@ self.addEventListener('fetch', function(e) {
         }, 200);
       });
 
-      // 未保存のスタンプがある状態で誤って閉じる事故を防ぐ確認ダイアログ
+      // 未保存のスタンプがある状態で誤って閉じる事故を防ぐ確認ダイアログ。
+      // ただし、Jtableへの切り替えリンク経由（switchingApps=true）の場合は
+      // handleAppSwitch()内でIndexedDBへ状態を保存済みなのでデータは失われない。
+      // それにも関わらずこの警告を出すと、切り替えるたびに毎回確認ダイアログが
+      // 出てしまい煩わしいため、切り替え中はこの警告を出さない。
       window.addEventListener("beforeunload", (e) => {
-        if (hasUnsavedChanges) {
+        if (hasUnsavedChanges && !switchingApps) {
           e.preventDefault();
           e.returnValue = "";
         }
@@ -1552,8 +1715,12 @@ self.addEventListener('fetch', function(e) {
           setTimeout(() => document.getElementById("file-input").click(), 50);
         }
       } catch (e) {}
+
+      // Jtableから切り替えて戻ってきた直後であれば、保存しておいたPDF・
+      // スタンプ状態を自動復元する
+      tryRestoreHandoffIfReturning();
     </script>
 
-    <a class="app-switch-fab" href="https://joujing9119-maker.github.io/jtable/" title="Jtableに切り替え">📋</a>
+    <a class="app-switch-fab" href="https://joujing9119-maker.github.io/jtable/" title="Jtableに切り替え" onclick="handleAppSwitch(event)">📋</a>
   </body>
 </html>
