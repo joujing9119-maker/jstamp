@@ -117,7 +117,7 @@
         color: rgba(255,255,255,0.38); text-transform: uppercase;
         width: 100%; text-align: center; margin-top: 4px;
       }
-      .tb-divider { width: var(--tb-btn-w); height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; }
+      .tb-divider { width: var(--tb-btn-w); height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; flex-shrink: 0; }
       #counter-wrap {
         display: flex; flex-direction: column; align-items: center;
         gap: 4px; width: 100%; padding: 4px 0 2px; cursor: pointer;
@@ -131,7 +131,7 @@
       }
       #counter-label { font-size: 11px; color: rgba(255,255,255,0.5); text-align: center; }
       .tb-icon-btn {
-        width: var(--tb-btn-w); height: var(--tb-btn-w);
+        width: var(--tb-btn-w); height: var(--tb-btn-w); flex-shrink: 0;
         border-radius: calc(var(--tb-btn-w) * 0.13); border: none;
         background: rgba(255,255,255,0.08); color: #fff;
         font-size: var(--tb-txt-fs); font-weight: 700;
@@ -388,7 +388,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver0.99</div>
+    <div id="version-badge">ver1.00</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -446,7 +446,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v0.99";
+        const CACHE_NAME = "jstamp-v1.00";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
