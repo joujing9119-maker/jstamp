@@ -35,9 +35,11 @@
            ツールバー幅が広がり、52pxのスウォッチ側にだけ左右の余白が目立って
            見える結果になっていた。ここではアイテムサイズを先に決め、ツールバー幅は
            「アイテム＋最小限の余白」として後から逆算することで、スウォッチと
-           ボタンの一辺の長さを完全に一致させ、左右の余白の差をなくす。 */
+           ボタンの一辺の長さを完全に一致させ、左右の余白の差をなくす。
+           余白は左右2pxずつ（計4px）とユーザー指定の値。--tb-itemが下限の60pxの
+           場合、右ツールバー幅は 60px + 4px = 64px 前後になる。 */
         --tb-item: clamp(60px, 8vw, 100px);
-        --right-w: calc(var(--tb-item) + 20px);
+        --right-w: calc(var(--tb-item) + 4px);
         --bottom-h: clamp(60px, 8.5vh, 96px);
         --swatch-d: var(--tb-item);
         --tb-btn-w: var(--tb-item);
@@ -388,7 +390,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.00</div>
+    <div id="version-badge">ver1.02</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -446,7 +448,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.00";
+        const CACHE_NAME = "jstamp-v1.02";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -554,13 +556,41 @@ self.addEventListener('fetch', function(e) {
       let canvasW          = 0;
       let canvasH          = 0;
       let currentColor     = PALETTE[0].color;
-      // stamps[pageNum] の各エントリ: { x, y, num, color, pdfSize }
+      // stamps[pageNum] の各エントリ: { id, x, y, num, color, pdfSize }
+      //   id       : このスタンプ固有の識別子（後述のnextStampIdから採番）
       //   x, y     : PDF座標系（scale:1 viewport内ピクセル位置）
       //   pdfSize  : スタンプ直径（PDF座標系ピクセル数）
       let stamps           = {};
       // ページを横断して「最後に押したスタンプ」を取り消せるよう、
       // 押した順に { pageNum, stamp } を記録する履歴スタック。
+      // stampHistory[i].stamp は、配置時にはstamps[pageNum]内の同じオブジェクトへの
+      // 参照そのものだが、localStorageのJSON化やIndexedDBへの保存・復元を経由すると、
+      // 参照の同一性が保たれない場合がある（後述のid採番はこれに対する対策）。
       let stampHistory      = [];
+      // 各スタンプに付与する一意なID（配置順に単調増加）。
+      // undoLast()で「配置(place)」を取り消す際、以前はstampHistory側の
+      // stampオブジェクトをstamps[pageNum]配列からJSの参照の同一性（indexOf）で
+      // 探して削除していたが、バックアップ復元（localStorageのJSON.parse、または
+      // IndexedDBハンドオフ）を経由した直後は、stamps側とstampHistory側で
+      // 同じ内容でも別オブジェクトになっているケースがあり、indexOfが見つからず
+      // 「取り消しました」という表示だけ出てスタンプ自体は消えないという不具合が
+      // あった（ver1.01で修正、詳細はundoLast()のコメント参照）。
+      // idはプリミティブな数値なので、シリアライズ／デシリアライズを経ても
+      // 値として保持され、これをキーに探すことで確実にマッチできる。
+      let nextStampId        = 1;
+      function genStampId() { return nextStampId++; }
+      // 復元処理（自動バックアップ復元・アプリ切り替えハンドオフ復元）の後は、
+      // 新しく配置するスタンプのIDが復元データ内の既存IDと衝突しないよう、
+      // 復元済みデータ内の最大ID+1へnextStampIdを進めておく。
+      function recalcNextStampId() {
+        let maxId = 0;
+        Object.values(stamps).forEach(list => {
+          (list || []).forEach(s => {
+            if (typeof s.id === "number" && s.id > maxId) maxId = s.id;
+          });
+        });
+        nextStampId = maxId + 1;
+      }
       // 削除モードのON/OFF状態
       let deleteMode        = false;
       // 直前の保存以降に未保存の変更があるかどうか
@@ -768,6 +798,7 @@ self.addEventListener('fetch', function(e) {
           currentPage  = Math.min(Math.max(1, data.currentPage || 1), totalPages);
           stamps       = data.stamps || {};
           stampHistory = data.stampHistory || [];
+          recalcNextStampId();
           Object.assign(colorCounters, data.colorCounters || {});
           hasUnsavedChanges = !!data.hasUnsavedChanges;
           if (deleteMode) toggleDeleteMode();
@@ -1004,6 +1035,7 @@ self.addEventListener('fetch', function(e) {
             currentPage  = 1;
             stamps       = {};
             stampHistory = [];
+            nextStampId  = 1;
             hasUnsavedChanges = false;
             if (deleteMode) toggleDeleteMode();
             PALETTE.forEach(p => { colorCounters[p.color] = 1; });
@@ -1346,7 +1378,7 @@ self.addEventListener('fetch', function(e) {
 
         const pdfSize = parseInt(document.getElementById("stamp-size").value);
         const num     = colorCounters[currentColor];
-        const stamp   = { x: pdfX, y: pdfY, num, color: currentColor, pdfSize };
+        const stamp   = { id: genStampId(), x: pdfX, y: pdfY, num, color: currentColor, pdfSize };
         if (!stamps[currentPage]) stamps[currentPage] = [];
         stamps[currentPage].push(stamp);
         stampHistory.push({ action: "place", pageNum: currentPage, stamp });
@@ -1440,7 +1472,19 @@ self.addEventListener('fetch', function(e) {
         if (action === "place") {
           const list = stamps[pageNum];
           if (list) {
-            const idx = list.indexOf(stamp);
+            // ver1.01：以前はJSの参照の同一性（indexOf）だけでstamps[pageNum]内の
+            // 対象を探していたが、バックアップ復元（localStorageのJSON.parse、または
+            // アプリ切り替えハンドオフのIndexedDB経由の復元）を挟むと、
+            // stampHistory側のstampオブジェクトとstamps[pageNum]側のオブジェクトが
+            // 「値は同じだが別インスタンス」になり、indexOfが-1を返して
+            // 削除処理がスキップされる（「取り消しました」という表示だけ出て
+            // スタンプ自体は画面に残り続ける）不具合があった。
+            // stamp.idという不変のプリミティブ値（数値）を優先的なキーとして探し、
+            // 見つからない場合のみ従来の参照一致にフォールバックする。
+            let idx = (stamp && typeof stamp.id === "number")
+              ? list.findIndex(s => s.id === stamp.id)
+              : -1;
+            if (idx === -1) idx = list.indexOf(stamp);
             if (idx !== -1) list.splice(idx, 1);
           }
           colorCounters[stamp.color] = stamp.num;
@@ -1479,6 +1523,7 @@ self.addEventListener('fetch', function(e) {
 
         stamps       = data.stamps || {};
         stampHistory = data.stampHistory || [];
+        recalcNextStampId();
         Object.assign(colorCounters, data.colorCounters || {});
         const restorePage = Math.min(Math.max(1, data.currentPage || 1), totalPages);
         currentPage = restorePage;
@@ -1525,9 +1570,22 @@ self.addEventListener('fetch', function(e) {
       }
 
       // ── PDF保存 ───────────────────────────────────────────────────────────
+      // ファイル名末尾に付与する日時文字列（例：20260711_1430）を生成する。
+      // 「_copy」固定だったものを、保存ダイアログを開いた「その瞬間」の日時に
+      // 差し替える。new Date()をopenSaveDialog()が呼ばれるたびに評価するため、
+      // 通常の新規読込直後・復元（バックアップ復元／アプリ切り替えハンドオフ復元）
+      // 直後のどちらでも、保存時点の現在時刻が正しく反映される
+      // （復元データ側に保存時刻を持たせてそれを使い回す設計だと、復元した時点で
+      // 古い日時のまま固定されてしまうため、あえて状態に保持せずその場で都度計算する）。
+      function formatTimestampForFilename(d) {
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+      }
+
       function openSaveDialog() {
         if (!originalPdfBytes) return;
-        document.getElementById("filename-input").value = originalFileName + "_copy";
+        const ts = formatTimestampForFilename(new Date());
+        document.getElementById("filename-input").value = `${originalFileName}_${ts}`;
         document.getElementById("filename-overlay").classList.add("open");
         setTimeout(() => {
           const inp = document.getElementById("filename-input");
@@ -1545,7 +1603,7 @@ self.addEventListener('fetch', function(e) {
 
       async function executeFileSave() {
         let fname = document.getElementById("filename-input").value.trim()
-                    || (originalFileName + "_copy");
+                    || `${originalFileName}_${formatTimestampForFilename(new Date())}`;
         if (!/\.pdf$/i.test(fname)) fname += ".pdf";
         closeFilenameDialog();
         await savePDF(fname);
