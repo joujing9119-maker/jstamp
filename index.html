@@ -114,7 +114,19 @@
         gap: var(--nav-gap); z-index: 100;
         border-left: 1px solid rgba(255,255,255,0.08);
         overflow-y: auto; overflow-x: hidden;
+        /* コンテンツが縦に収まりきらない場合にスクロールバーが出るが、OS標準の
+           スクロールバー（Windows Chrome等では15〜19px幅）がそのまま出ると、
+           固定64px幅の枠内でスクロールバー分だけボタン・スウォッチの表示スペースが
+           圧迫され、60px幅の想定より狭く表示・位置ズレする問題があった
+           （Jtable側の.nav-areaは要素数が少なくスクロールが発生しないため、
+           この問題は起きない）。スクロールバー自体を細く目立たなくすることで、
+           万一縦に収まりきらない画面サイズでもボタン幅への影響を最小限にする。 */
+        scrollbar-width: thin; /* Firefox */
+        scrollbar-color: rgba(255,255,255,0.25) transparent; /* Firefox */
       }
+      #toolbar-right::-webkit-scrollbar { width: 4px; }
+      #toolbar-right::-webkit-scrollbar-track { background: transparent; }
+      #toolbar-right::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 2px; }
       #toolbar-bottom {
         position: fixed; left: 0; right: calc(var(--app-pad) + var(--right-w)); bottom: 0; height: var(--bottom-h);
         background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
@@ -418,7 +430,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.04</div>
+    <div id="version-badge">ver1.05</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -476,7 +488,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.04";
+        const CACHE_NAME = "jstamp-v1.05";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
