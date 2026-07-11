@@ -25,16 +25,23 @@
         --danger-text: #ff6b6b;
         --toolbar-bg: rgba(20, 20, 20, 0.82);
         --toolbar-blur: blur(12px);
-        /* 右ツールバー（#toolbar-right）の寸法は、姉妹アプリ「Jtable」の
+        /* 右ツールバー（#toolbar-right）の寸法・位置は、姉妹アプリ「Jtable」の
            .nav-area（右ツールバー相当）と統一するため、ver1.03からvw基準の
            可変サイズをやめ、Jtable側の設計と同じ固定pxに変更した。
            Jtable側の構成：
+             .app-container padding: 10px（アプリ全体を囲む外側の余白）
+             左カラム（テーブル本体）と.nav-areaの間のgap: 8px
              .nav-area padding: 上0 / 右2px / 下8px / 左2px
              ボタン本体: 60×56px 固定、角丸14px
              .nav-area直下（グループ間）の基本gap: 8px
              グループ内（ボタン同士）のgap: 6px
-           右ツールバーの実質幅は「左パディング2px＋ボタン幅60px＋右パディング2px
-           ＝64px」で、Jtable側と同じ計算式になる。 */
+           ver1.03では.nav-area自身の内側の余白（padding）だけを再現し、
+           .app-containerの外側の余白(10px)と左カラムとのgap(8px)を反映していな
+           かったため、実機のJtableと並べると「ボタンが画面端に寄りすぎている」
+           ように見える差異が残っていた（ver1.04でPlaywrightではなく実スクリーン
+           ショットのピクセル計測により発覚・修正）。 */
+        --app-pad: 10px;  /* .app-container相当の外側余白（画面端からツールバーまでの距離） */
+        --col-gap: 8px;   /* 左カラム（canvas-area）と右ツールバーの間のgap */
         --nav-btn-w: 60px;   /* ボタン本体の幅（Jtableと統一・固定） */
         --nav-btn-h: 56px;   /* ボタン本体の高さ（Jtableと統一・固定） */
         --nav-radius: 14px;  /* ボタンの角丸（Jtableと統一・固定） */
@@ -44,7 +51,7 @@
         --nav-pad-l: 2px;
         --nav-gap: 8px;        /* .nav-area直下（ラベル・区切り線・ボタングループ間）の基本gap */
         --nav-group-gap: 6px;  /* 同じグループ内のボタン同士のgap（カラーパレット・操作・PDF各グループ） */
-        --right-w: calc(var(--nav-pad-l) + var(--nav-btn-w) + var(--nav-pad-r)); /* ≒64px */
+        --right-w: calc(var(--nav-pad-l) + var(--nav-btn-w) + var(--nav-pad-r)); /* ≒64px（.nav-area自身の幅） */
         /* カラースウォッチ・カウンターサークル（次に押す番号の表示）も、
            ボタンと同じ60pxを直径にすることで、同じ列内できれいに揃って収まるようにする。 */
         --swatch-d: var(--nav-btn-w);
@@ -69,7 +76,7 @@
       #canvas-area {
         position: absolute;
         top: 0; left: 0;
-        right: var(--right-w);
+        right: calc(var(--app-pad) + var(--right-w) + var(--col-gap));
         bottom: var(--bottom-h);
         overflow: hidden;
         background: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
@@ -99,7 +106,7 @@
       }
       .btn-open-big:active { transform: scale(0.96); }
       #toolbar-right {
-        position: fixed; right: 0; top: 0; bottom: var(--bottom-h); width: var(--right-w);
+        position: fixed; right: var(--app-pad); top: var(--app-pad); bottom: var(--bottom-h); width: var(--right-w);
         background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
         -webkit-backdrop-filter: var(--toolbar-blur);
         display: flex; flex-direction: column; align-items: center;
@@ -109,14 +116,14 @@
         overflow-y: auto; overflow-x: hidden;
       }
       #toolbar-bottom {
-        position: fixed; left: 0; right: var(--right-w); bottom: 0; height: var(--bottom-h);
+        position: fixed; left: 0; right: calc(var(--app-pad) + var(--right-w)); bottom: 0; height: var(--bottom-h);
         background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
         -webkit-backdrop-filter: var(--toolbar-blur);
         display: flex; align-items: center; padding: 0 10px 0 14px; gap: 8px;
         z-index: 100; border-top: 1px solid rgba(255,255,255,0.08);
       }
       #toolbar-corner {
-        position: fixed; right: 0; bottom: 0; width: var(--right-w); height: var(--bottom-h);
+        position: fixed; right: var(--app-pad); bottom: 0; width: var(--right-w); height: var(--bottom-h);
         background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
         -webkit-backdrop-filter: var(--toolbar-blur); z-index: 101;
         border-left: 1px solid rgba(255,255,255,0.08);
@@ -411,7 +418,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.03</div>
+    <div id="version-badge">ver1.04</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -469,7 +476,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.03";
+        const CACHE_NAME = "jstamp-v1.04";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
