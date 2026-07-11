@@ -25,29 +25,37 @@
         --danger-text: #ff6b6b;
         --toolbar-bg: rgba(20, 20, 20, 0.82);
         --toolbar-blur: blur(12px);
-        /* 右ツールバー内の正方形アイテム（カラースウォッチ／カウンターサークルの
-           直径、および戻す/削除/開く等の角丸ボタンの一辺）の基準サイズ。
-           画面幅に対する比率(vw)を基準に可変にし、clamp()で下限・上限を設けている
-           （極端に小さい画面でボタンが押せないほど縮んだり、大画面で間延びしすぎたり
-           するのを防ぐため）。
-           以前は逆に「まずツールバー幅(--right-w)を固定/可変で決めて、そこから
-           アイテムサイズを逆算する」順序だったため、108px角丸ボタンに合わせて
-           ツールバー幅が広がり、52pxのスウォッチ側にだけ左右の余白が目立って
-           見える結果になっていた。ここではアイテムサイズを先に決め、ツールバー幅は
-           「アイテム＋最小限の余白」として後から逆算することで、スウォッチと
-           ボタンの一辺の長さを完全に一致させ、左右の余白の差をなくす。
-           余白は左右2pxずつ（計4px）とユーザー指定の値。--tb-itemが下限の60pxの
-           場合、右ツールバー幅は 60px + 4px = 64px 前後になる。 */
-        --tb-item: clamp(60px, 8vw, 100px);
-        --right-w: calc(var(--tb-item) + 4px);
+        /* 右ツールバー（#toolbar-right）の寸法は、姉妹アプリ「Jtable」の
+           .nav-area（右ツールバー相当）と統一するため、ver1.03からvw基準の
+           可変サイズをやめ、Jtable側の設計と同じ固定pxに変更した。
+           Jtable側の構成：
+             .nav-area padding: 上0 / 右2px / 下8px / 左2px
+             ボタン本体: 60×56px 固定、角丸14px
+             .nav-area直下（グループ間）の基本gap: 8px
+             グループ内（ボタン同士）のgap: 6px
+           右ツールバーの実質幅は「左パディング2px＋ボタン幅60px＋右パディング2px
+           ＝64px」で、Jtable側と同じ計算式になる。 */
+        --nav-btn-w: 60px;   /* ボタン本体の幅（Jtableと統一・固定） */
+        --nav-btn-h: 56px;   /* ボタン本体の高さ（Jtableと統一・固定） */
+        --nav-radius: 14px;  /* ボタンの角丸（Jtableと統一・固定） */
+        --nav-pad-t: 0px;
+        --nav-pad-r: 2px;
+        --nav-pad-b: 8px;
+        --nav-pad-l: 2px;
+        --nav-gap: 8px;        /* .nav-area直下（ラベル・区切り線・ボタングループ間）の基本gap */
+        --nav-group-gap: 6px;  /* 同じグループ内のボタン同士のgap（カラーパレット・操作・PDF各グループ） */
+        --right-w: calc(var(--nav-pad-l) + var(--nav-btn-w) + var(--nav-pad-r)); /* ≒64px */
+        /* カラースウォッチ・カウンターサークル（次に押す番号の表示）も、
+           ボタンと同じ60pxを直径にすることで、同じ列内できれいに揃って収まるようにする。 */
+        --swatch-d: var(--nav-btn-w);
         --bottom-h: clamp(60px, 8.5vh, 96px);
-        --swatch-d: var(--tb-item);
-        --tb-btn-w: var(--tb-item);
-        /* ボタン内のアイコン・文字サイズは--tb-itemに比例させつつ、アイテムが
-           小さい画面でも文字が読めなくなるほど縮まないようclamp()で下限を設ける。 */
-        --tb-icon-fs: clamp(20px, calc(var(--tb-item) * 0.315), 36px);
-        --tb-txt-fs:  clamp(10px, calc(var(--tb-item) * 0.12), 14px);
-        /* 下ツールバーのページ送り・拡縮ボタンも、--bottom-hに対する比率で可変にする */
+        /* ボタン内のアイコン・ラベル文字サイズも、60×56pxの固定ボタンサイズに
+           合わせて固定値にする（以前のようなvw基準のclamp()は右ツールバーでは
+           使わない）。 */
+        --nav-icon-fs: 22px;
+        --nav-txt-fs: 10px;
+        /* 下ツールバーのページ送り・拡縮ボタンは、右ツールバーとは別に
+           引き続き画面高さに対する比率で可変にする（Jtable統一の対象外）。 */
         --pg-btn-d: calc(var(--bottom-h) * 0.64);
       }
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -95,7 +103,8 @@
         background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
         -webkit-backdrop-filter: var(--toolbar-blur);
         display: flex; flex-direction: column; align-items: center;
-        padding: 10px 0; gap: 6px; z-index: 100;
+        padding: var(--nav-pad-t) var(--nav-pad-r) var(--nav-pad-b) var(--nav-pad-l);
+        gap: var(--nav-gap); z-index: 100;
         border-left: 1px solid rgba(255,255,255,0.08);
         overflow-y: auto; overflow-x: hidden;
       }
@@ -119,7 +128,15 @@
         color: rgba(255,255,255,0.38); text-transform: uppercase;
         width: 100%; text-align: center; margin-top: 4px;
       }
-      .tb-divider { width: var(--tb-btn-w); height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; flex-shrink: 0; }
+      .tb-divider { width: var(--nav-btn-w); height: 1px; background: rgba(255,255,255,0.12); margin: 4px 0; flex-shrink: 0; }
+      /* 戻す/番号1へ/削除のような「同じ機能グループ」のボタンをまとめる箱。
+         グループ内のボタン同士はJtableと同じgap:6px（--nav-group-gap）で詰め、
+         グループとグループの間（ラベル・区切り線を挟んだ間隔）は
+         #toolbar-right自体のgap:8px（--nav-gap）に委ねる。 */
+      .toolbar-group {
+        display: flex; flex-direction: column; align-items: center;
+        gap: var(--nav-group-gap); width: 100%; flex-shrink: 0;
+      }
       #counter-wrap {
         display: flex; flex-direction: column; align-items: center;
         gap: 4px; width: 100%; padding: 4px 0 2px; cursor: pointer;
@@ -133,19 +150,19 @@
       }
       #counter-label { font-size: 11px; color: rgba(255,255,255,0.5); text-align: center; }
       .tb-icon-btn {
-        width: var(--tb-btn-w); height: var(--tb-btn-w); flex-shrink: 0;
-        border-radius: calc(var(--tb-btn-w) * 0.13); border: none;
+        width: var(--nav-btn-w); height: var(--nav-btn-h); flex-shrink: 0;
+        border-radius: var(--nav-radius); border: none;
         background: rgba(255,255,255,0.08); color: #fff;
-        font-size: var(--tb-txt-fs); font-weight: 700;
+        font-size: var(--nav-txt-fs); font-weight: 700;
         cursor: pointer; display: flex; flex-direction: column; align-items: center;
-        justify-content: center; gap: calc(var(--tb-btn-w) * 0.045); -webkit-tap-highlight-color: transparent;
+        justify-content: center; gap: 3px; -webkit-tap-highlight-color: transparent;
         transition: background 0.12s, transform 0.1s; line-height: 1.2;
-        text-align: center; padding: calc(var(--tb-btn-w) * 0.035);
+        text-align: center; padding: 3px 2px;
       }
       .tb-icon-btn:active { transform: scale(0.91); background: rgba(255,255,255,0.18); }
       .tb-icon-btn:disabled { opacity: 0.28; pointer-events: none; }
-      .tb-icon-btn .ib-icon { font-size: var(--tb-icon-fs); line-height: 1; }
-      .tb-icon-btn .ib-txt { font-size: var(--tb-txt-fs); }
+      .tb-icon-btn .ib-icon { font-size: var(--nav-icon-fs); line-height: 1; }
+      .tb-icon-btn .ib-txt { font-size: var(--nav-txt-fs); }
       .tb-icon-btn.danger { color: #ff6b6b; }
       .tb-icon-btn.success { color: #5dd47e; }
       .tb-icon-btn.accent { background: var(--accent); color: #fff; }
@@ -167,7 +184,7 @@
         box-shadow: 0 4px 15px rgba(91,61,240,0.4);
       }
       .app-switch-fab:active { transform: scale(0.92); }
-      #palette-wrap { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 2px 4px; }
+      #palette-wrap { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: center; justify-content: center; gap: var(--nav-group-gap); width: 100%; padding: 2px 4px; }
       .color-swatch {
         width: var(--swatch-d); height: var(--swatch-d); border-radius: 50%;
         border: calc(var(--swatch-d) * 0.058) solid transparent;
@@ -351,23 +368,27 @@
         <div id="palette-wrap"></div>
         <div class="tb-divider"></div>
         <div class="tb-label">操作</div>
-        <button class="tb-icon-btn danger" id="undo-btn" disabled onclick="undoLast()" title="1つ戻す">
-          <span class="ib-icon">↩</span><span class="ib-txt">戻す</span>
-        </button>
-        <button class="tb-icon-btn" style="color:#ffaa44" onclick="resetCounter()" title="番号リセット">
-          <span class="ib-icon">↺</span><span class="ib-txt">番号1へ</span>
-        </button>
-        <button class="tb-icon-btn" id="delete-mode-btn" onclick="toggleDeleteMode()" title="削除モード切替">
-          <span class="ib-icon">🗑</span><span class="ib-txt">削除</span>
-        </button>
+        <div class="toolbar-group">
+          <button class="tb-icon-btn danger" id="undo-btn" disabled onclick="undoLast()" title="1つ戻す">
+            <span class="ib-icon">↩</span><span class="ib-txt">戻す</span>
+          </button>
+          <button class="tb-icon-btn" style="color:#ffaa44" onclick="resetCounter()" title="番号リセット">
+            <span class="ib-icon">↺</span><span class="ib-txt">番号1へ</span>
+          </button>
+          <button class="tb-icon-btn" id="delete-mode-btn" onclick="toggleDeleteMode()" title="削除モード切替">
+            <span class="ib-icon">🗑</span><span class="ib-txt">削除</span>
+          </button>
+        </div>
         <div class="tb-divider"></div>
         <div class="tb-label">PDF</div>
-        <button class="tb-icon-btn accent" onclick="openFilePicker()" title="PDFを開く">
-          <span class="ib-icon">📂</span><span class="ib-txt">開く</span>
-        </button>
-        <button class="tb-icon-btn success" id="save-btn" disabled onclick="openSaveDialog()" title="PDFを保存">
-          <span class="ib-icon">💾</span><span class="ib-txt">保存</span>
-        </button>
+        <div class="toolbar-group">
+          <button class="tb-icon-btn accent" onclick="openFilePicker()" title="PDFを開く">
+            <span class="ib-icon">📂</span><span class="ib-txt">開く</span>
+          </button>
+          <button class="tb-icon-btn success" id="save-btn" disabled onclick="openSaveDialog()" title="PDFを保存">
+            <span class="ib-icon">💾</span><span class="ib-txt">保存</span>
+          </button>
+        </div>
       </div>
 
       <div id="toolbar-bottom">
@@ -390,7 +411,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.02</div>
+    <div id="version-badge">ver1.03</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -448,7 +469,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.02";
+        const CACHE_NAME = "jstamp-v1.03";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
