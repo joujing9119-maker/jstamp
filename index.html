@@ -56,11 +56,12 @@
            ボタンと同じ60pxを直径にすることで、同じ列内できれいに揃って収まるようにする。 */
         --swatch-d: var(--nav-btn-w);
         --bottom-h: clamp(60px, 8.5vh, 96px);
-        /* ボタン内のアイコン・ラベル文字サイズも、60×56pxの固定ボタンサイズに
-           合わせて固定値にする（以前のようなvw基準のclamp()は右ツールバーでは
-           使わない）。 */
-        --nav-icon-fs: 22px;
-        --nav-txt-fs: 10px;
+        /* ボタン内のアイコン・ラベル文字サイズは、Jtableの実コード
+           `.side-tool-btn .side-btn-icon`（26px）/`.side-btn-label`（13px）に
+           合わせた固定値（ver1.06で修正。それ以前は`.nav-btn`側の値
+           22px/10pxを誤って使っていた）。 */
+        --nav-icon-fs: 26px;
+        --nav-txt-fs: 13px;
         /* 下ツールバーのページ送り・拡縮ボタンは、右ツールバーとは別に
            引き続き画面高さに対する比率で可変にする（Jtable統一の対象外）。 */
         --pg-btn-d: calc(var(--bottom-h) * 0.64);
@@ -114,19 +115,17 @@
         gap: var(--nav-gap); z-index: 100;
         border-left: 1px solid rgba(255,255,255,0.08);
         overflow-y: auto; overflow-x: hidden;
-        /* コンテンツが縦に収まりきらない場合にスクロールバーが出るが、OS標準の
-           スクロールバー（Windows Chrome等では15〜19px幅）がそのまま出ると、
-           固定64px幅の枠内でスクロールバー分だけボタン・スウォッチの表示スペースが
-           圧迫され、60px幅の想定より狭く表示・位置ズレする問題があった
-           （Jtable側の.nav-areaは要素数が少なくスクロールが発生しないため、
-           この問題は起きない）。スクロールバー自体を細く目立たなくすることで、
-           万一縦に収まりきらない画面サイズでもボタン幅への影響を最小限にする。 */
-        scrollbar-width: thin; /* Firefox */
-        scrollbar-color: rgba(255,255,255,0.25) transparent; /* Firefox */
+        /* ver1.05では「スクロールバーを細くする」対応をしていたが、Jtable実コードの
+           .nav-areaはスクロールバーを完全に非表示にしている
+           （scrollbar-width:none + ::-webkit-scrollbar{display:none}）。
+           見た目を完全一致させるため、ver1.06でJtableと同じ「完全非表示」方式に
+           修正した。スクロールバーが見えなくても、overflow-y:autoとタッチ操作
+           （-webkit-overflow-scrolling/touch-action/overscroll-behavior）自体は
+           有効なので、指でのスクロール操作は引き続き可能。 */
+        -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain;
+        scrollbar-width: none; /* Firefox */
       }
-      #toolbar-right::-webkit-scrollbar { width: 4px; }
-      #toolbar-right::-webkit-scrollbar-track { background: transparent; }
-      #toolbar-right::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 2px; }
+      #toolbar-right::-webkit-scrollbar { display: none; } /* Chrome/Safari */
       #toolbar-bottom {
         position: fixed; left: 0; right: calc(var(--app-pad) + var(--right-w)); bottom: 0; height: var(--bottom-h);
         background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
@@ -174,9 +173,9 @@
         background: rgba(255,255,255,0.08); color: #fff;
         font-size: var(--nav-txt-fs); font-weight: 700;
         cursor: pointer; display: flex; flex-direction: column; align-items: center;
-        justify-content: center; gap: 3px; -webkit-tap-highlight-color: transparent;
-        transition: background 0.12s, transform 0.1s; line-height: 1.2;
-        text-align: center; padding: 3px 2px;
+        justify-content: center; gap: 2px; -webkit-tap-highlight-color: transparent;
+        transition: background 0.12s, transform 0.1s; line-height: 1;
+        text-align: center;
       }
       .tb-icon-btn:active { transform: scale(0.91); background: rgba(255,255,255,0.18); }
       .tb-icon-btn:disabled { opacity: 0.28; pointer-events: none; }
@@ -430,7 +429,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.05</div>
+    <div id="version-badge">ver1.06</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -488,7 +487,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.05";
+        const CACHE_NAME = "jstamp-v1.06";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
