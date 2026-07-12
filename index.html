@@ -202,15 +202,38 @@
         box-shadow: 0 4px 15px rgba(91,61,240,0.4);
       }
       .app-switch-fab:active { transform: scale(0.92); }
+      /* 全画面表示切り替えボタン。切り替えボタン（.app-switch-fab）のすぐ右隣に
+         配置する（Jtable側の「ホームボタンの隣に全画面ボタン」という配置に合わせた）。
+         形（52px円形）は.app-switch-fabと完全に統一し、色だけを変えて機能の違いが
+         わかるようにしている。
+         Fullscreen APIの対応状況はブラウザ・iPadのSafari/standalone表示モードに
+         よって差があるため、非対応の場合はtoggleFullscreen()内でトーストを出して
+         フォールバックする（詳細はJS側のコメント参照）。 */
+      .fullscreen-fab {
+        position: fixed; left: 76px; bottom: calc(var(--bottom-h) + 16px); z-index: 110;
+        width: 52px; height: 52px; border-radius: 50%;
+        background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.18);
+        color: #fff; display: flex; align-items: center; justify-content: center;
+        font-size: 22px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+        transition: background 0.12s, transform 0.1s;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      }
+      .fullscreen-fab:active { transform: scale(0.92); background: rgba(255,255,255,0.22); }
+      .fullscreen-fab.active { background: rgba(255,255,255,0.26); border-color: rgba(255,255,255,0.35); }
       #palette-wrap { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: center; justify-content: center; gap: var(--nav-group-gap); width: 100%; padding: 2px 4px; }
       .color-swatch {
         width: var(--swatch-d); height: var(--swatch-d); border-radius: 50%;
         border: calc(var(--swatch-d) * 0.058) solid transparent;
-        cursor: pointer; transition: transform 0.14s, border-color 0.14s, box-shadow 0.14s;
+        cursor: pointer; transition: border-color 0.14s, box-shadow 0.14s;
         -webkit-tap-highlight-color: transparent; flex-shrink: 0;
         display: flex; align-items: center; justify-content: center;
       }
-      .color-swatch.active { border-color: #fff; transform: scale(1.15); box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+      /* 選択中のスウォッチは以前transform:scale(1.15)で一回り大きく表示していたが、
+         その結果、直径が60px（ボタン幅と統一）から69pxへ変化してしまい、
+         「ツールバーの円形アイコンの直径をボタン幅に揃える」という設計方針から
+         選択中のものだけ外れてしまっていた（ver1.10で修正）。拡大はやめ、
+         白枠＋影だけで選択状態を示すことで、非選択時と同じ60px直径を常に保つ。 */
+      .color-swatch.active { border-color: #fff; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
       .color-swatch .swatch-num {
         font-weight: 900; color: #fff; pointer-events: none; user-select: none;
         text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.9); line-height: 1;
@@ -429,7 +452,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.06</div>
+    <div id="version-badge">ver1.10</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -487,7 +510,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.06";
+        const CACHE_NAME = "jstamp-v1.10";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -572,14 +595,14 @@ self.addEventListener('fetch', function(e) {
         { color: "#f1c40f", label: "黄" },
         { color: "#9b59b6", label: "紫" },
       ];
-      // カラースウォッチ・カウンターサークルの直径は、CSS変数 --swatch-d が
-      // 画面幅に応じて可変（vw基準）になったため、固定px定数では実際の表示サイズと
-      // ずれてしまう。実際にDOMへ描画された要素のサイズをgetBoundingClientRect()で
-      // 都度測定することで、画面サイズが変わっても数字のフォントサイズが正しく
-      // 円の内側に収まるようにする。
+      // カラースウォッチ・カウンターサークルの直径は、CSS変数 --swatch-d を
+      // 基準にしている（ver1.03〜は--nav-btn-wと同じ固定60px。それ以前は画面幅
+      // 基準の可変値だった）。固定px定数に頼らずgetBoundingClientRect()で都度
+      // 実測することで、CSS側の値が将来変わっても数字のフォントサイズが正しく
+      // 円の内側に収まるようにしている。
       function getSwatchDiameter(el) {
         const d = el ? el.getBoundingClientRect().width : 0;
-        return d > 0 ? d : 52; // 万一未描画で0が返る場合のフォールバック
+        return d > 0 ? d : 60; // 万一未描画で0が返る場合のフォールバック（現行の--nav-btn-wと同じ値）
       }
 
       // ── アプリ状態 ────────────────────────────────────────────────────────
@@ -635,15 +658,38 @@ self.addEventListener('fetch', function(e) {
       // 直前の保存以降に未保存の変更があるかどうか
       let hasUnsavedChanges = false;
       // 復元確認ダイアログ表示中、ユーザーの選択を待っているバックアップデータ
-      let pendingRestoreData = null;
+      // ── DOM要素のキャッシュ ──────────────────────────────────────────────
+      // 静的に存在し、複数の関数から繰り返し参照される要素はここで一度だけ
+      // 取得してまとめてキャッシュする（`getElementById`自体は高速だが、
+      // 同じ要素を関数ごとに何度も取得し直すのは無駄が多く、キャッシュし忘れの
+      // バグも起きやすいため、取得箇所を1箇所に集約する）。
+      // 動的に生成される要素（スウォッチ・スタンプドット等）はここには含めない。
+      const prevBtnEl        = document.getElementById("prev-btn");
+      const nextBtnEl        = document.getElementById("next-btn");
+      const undoBtnEl        = document.getElementById("undo-btn");
+      const saveBtnEl        = document.getElementById("save-btn");
+      const dropZoneEl       = document.getElementById("drop-zone");
+      const canvasArea       = document.getElementById("canvas-area");
+      const canvasWrap       = document.getElementById("canvas-wrap");
+      const pdfCanvasEl      = document.getElementById("pdf-canvas");
+      const pageInfoTxtEl    = document.getElementById("page-info-txt");
+      const counterCircleEl  = document.getElementById("counter-circle");
+      const stampSizeEl      = document.getElementById("stamp-size");
+      const sizeValEl        = document.getElementById("size-val");
+      const fileInputEl      = document.getElementById("file-input");
+      const deleteModeBtnEl  = document.getElementById("delete-mode-btn");
+      const deleteModeBannerEl = document.getElementById("delete-mode-banner");
+      const numpadOverlayEl  = document.getElementById("numpad-overlay");
+      const numpadDisplayEl  = document.getElementById("numpad-display");
+      const filenameOverlayEl = document.getElementById("filename-overlay");
+      const filenameInputEl  = document.getElementById("filename-input");
+      const restoreOverlayEl = document.getElementById("restore-overlay");
+      const zoomBadgeEl      = document.getElementById("zoom-badge");
+      const toastEl          = document.getElementById("toast");
+      const fullscreenBtnEl  = document.getElementById("fullscreen-fab-btn");
 
       // 色ごとのカウンター（キー: color文字列, 値: 次に置く番号 1〜999）
       const colorCounters = Object.fromEntries(PALETTE.map(p => [p.color, 1]));
-
-      // ページ送り・Undoボタンは多数の関数から頻繁に参照されるためキャッシュする
-      const prevBtnEl = document.getElementById("prev-btn");
-      const nextBtnEl = document.getElementById("next-btn");
-      const undoBtnEl = document.getElementById("undo-btn");
 
       // ── スタンプデータの自動バックアップ（localStorage） ─────────────────
       // アプリやデバイスの都合（強制終了・SW更新によるリロード・クラッシュ等）で
@@ -842,9 +888,9 @@ self.addEventListener('fetch', function(e) {
           hasUnsavedChanges = !!data.hasUnsavedChanges;
           if (deleteMode) toggleDeleteMode();
 
-          document.getElementById("drop-zone").style.display   = "none";
-          document.getElementById("canvas-wrap").style.display = "block";
-          document.getElementById("save-btn").disabled = false;
+          dropZoneEl.style.display   = "none";
+          canvasWrap.style.display = "block";
+          saveBtnEl.disabled = false;
           undoBtnEl.disabled = stampHistory.length === 0;
           prevBtnEl.disabled = false;
           nextBtnEl.disabled = false;
@@ -908,6 +954,11 @@ self.addEventListener('fetch', function(e) {
       }
 
       // ── カラーパレット初期化 ──────────────────────────────────────────────
+      // 色→DOM要素のマップを保持しておくことで、updateCounterUI()やselectColor()が
+      // 呼ばれるたび（スタンプ配置・削除・Undo・色選択・リサイズ等、非常に高頻度）に
+      // querySelector/querySelectorAllでDOMを探索し直す無駄をなくす。
+      const swatchEls    = new Map(); // color -> .color-swatch要素
+      const swatchNumEls = new Map(); // color -> .swatch-num（数字表示）要素
       (function initPalette() {
         const wrap = document.getElementById("palette-wrap");
         PALETTE.forEach((p, i) => {
@@ -923,34 +974,34 @@ self.addEventListener('fetch', function(e) {
           sw.appendChild(numSpan);
           sw.addEventListener("click", () => selectColor(p.color));
           wrap.appendChild(sw);
+          swatchEls.set(p.color, sw);
+          swatchNumEls.set(p.color, numSpan);
           // 初期表示時にもフォントサイズを明示しておく。指定しないとブラウザの
           // デフォルトサイズ（約16px）で表示され、後でupdateCounterUI()が呼ばれて
           // swatchFontSize()による正しいサイズに切り替わった瞬間に、数字の太さ・
           // 大きさが不自然に変化して見えてしまう。
-          // --swatch-dは画面幅基準の可変値のため、DOMへ挿入し実際にレイアウトが
-          // 確定した後（wrap.appendChild後）にgetBoundingClientRect()で実測する。
+          // --swatch-dは--nav-btn-wと同じ固定60px（ver1.03〜）だが、念のため
+          // DOMへ挿入し実際にレイアウトが確定した後（wrap.appendChild後）に
+          // getBoundingClientRect()で実測してから使う。
           numSpan.style.fontSize = swatchFontSize("1", getSwatchDiameter(sw)) + "px";
         });
         // カウンターサークルもスウォッチと同様、初期表示時にフォントサイズを
         // 明示しておく（指定しないとCSSの固定値のままになり、updateCounterUI()
         // が初めて呼ばれた瞬間に実測サイズへ切り替わって見た目が不自然に変化する）。
-        const counterEl = document.getElementById("counter-circle");
-        counterEl.style.fontSize = swatchFontSize("1", getSwatchDiameter(counterEl)) + "px";
+        counterCircleEl.style.fontSize = swatchFontSize("1", getSwatchDiameter(counterCircleEl)) + "px";
       })();
 
       // カウンターサークルとパレット上の全数字を同期する。
-      // 画面回転・リサイズで --right-w（延いては --swatch-d）が変わった後にも
-      // 呼び直すことで、常に実際の円サイズに合ったフォントサイズを保つ
-      // （resizeイベント側の処理を参照）。
+      // 画面回転・リサイズでツールバー幅が変わった場合にも呼び直すことで、
+      // 常に実際の円サイズに合ったフォントサイズを保つ（resizeイベント側の処理を参照）。
       function updateCounterUI() {
-        const n      = colorCounters[currentColor];
-        const circle = document.getElementById("counter-circle");
-        circle.style.borderColor = currentColor;
-        circle.style.color       = currentColor;
-        circle.textContent       = n;
-        circle.style.fontSize    = swatchFontSize(n, getSwatchDiameter(circle)) + "px";
+        const n = colorCounters[currentColor];
+        counterCircleEl.style.borderColor = currentColor;
+        counterCircleEl.style.color       = currentColor;
+        counterCircleEl.textContent       = n;
+        counterCircleEl.style.fontSize    = swatchFontSize(n, getSwatchDiameter(counterCircleEl)) + "px";
         PALETTE.forEach(p => {
-          const span = document.querySelector(`.swatch-num[data-swatch-color="${p.color}"]`);
+          const span = swatchNumEls.get(p.color);
           if (span) {
             const v = colorCounters[p.color];
             span.textContent  = v;
@@ -961,8 +1012,8 @@ self.addEventListener('fetch', function(e) {
 
       function selectColor(color) {
         currentColor = color;
-        document.querySelectorAll(".color-swatch").forEach(sw => {
-          sw.classList.toggle("active", sw.dataset.color === color);
+        swatchEls.forEach((sw, c) => {
+          sw.classList.toggle("active", c === color);
         });
         updateCounterUI();
       }
@@ -972,14 +1023,14 @@ self.addEventListener('fetch', function(e) {
 
       function openNumpad() {
         npValue = String(colorCounters[currentColor]);
-        document.getElementById("numpad-display").textContent = npValue;
-        document.getElementById("numpad-overlay").classList.add("open");
+        numpadDisplayEl.textContent = npValue;
+        numpadOverlayEl.classList.add("open");
       }
       function closeNumpad() {
-        document.getElementById("numpad-overlay").classList.remove("open");
+        numpadOverlayEl.classList.remove("open");
       }
       function closeNumpadIfBg(e) {
-        if (e.target === document.getElementById("numpad-overlay")) closeNumpad();
+        if (e.target === numpadOverlayEl) closeNumpad();
       }
       function npInput(d) {
         if (npValue === "0" || npValue === "") {
@@ -989,15 +1040,15 @@ self.addEventListener('fetch', function(e) {
           npValue += d;
         }
         if (parseInt(npValue) > 999) npValue = "999";
-        document.getElementById("numpad-display").textContent = npValue;
+        numpadDisplayEl.textContent = npValue;
       }
       function npDel() {
         npValue = npValue.slice(0, -1);
-        document.getElementById("numpad-display").textContent = npValue || "0";
+        numpadDisplayEl.textContent = npValue || "0";
       }
       function npClear() {
         npValue = "";
-        document.getElementById("numpad-display").textContent = "0";
+        numpadDisplayEl.textContent = "0";
       }
       function npOK() {
         const v = parseInt(npValue);
@@ -1030,7 +1081,7 @@ self.addEventListener('fetch', function(e) {
           window.location.reload();
           return;
         }
-        document.getElementById("file-input").click();
+        fileInputEl.click();
       }
 
       async function loadPDF(input) {
@@ -1078,14 +1129,14 @@ self.addEventListener('fetch', function(e) {
             hasUnsavedChanges = false;
             if (deleteMode) toggleDeleteMode();
             PALETTE.forEach(p => { colorCounters[p.color] = 1; });
-            document.getElementById("drop-zone").style.display   = "none";
-            document.getElementById("canvas-wrap").style.display = "block";
-            document.getElementById("save-btn").disabled = false;
+            dropZoneEl.style.display   = "none";
+            canvasWrap.style.display = "block";
+            saveBtnEl.disabled = false;
             undoBtnEl.disabled = true;
             prevBtnEl.disabled = false;
             nextBtnEl.disabled = false;
-            document.getElementById("stamp-size").value  = 20;
-            document.getElementById("size-val").textContent = "20";
+            stampSizeEl.value  = 20;
+            sizeValEl.textContent = "20";
             updateCounterUI();
             await renderPage(currentPage, true);
 
@@ -1096,7 +1147,7 @@ self.addEventListener('fetch', function(e) {
             const backup = loadBackupIfMatches(originalFileName, originalPdfBytes.length);
             if (backup) {
               pendingRestoreData = backup;
-              document.getElementById("restore-overlay").classList.add("open");
+              restoreOverlayEl.classList.add("open");
             } else {
               showToast(`PDF 読み込み完了（${totalPages}ページ）`);
             }
@@ -1104,8 +1155,8 @@ self.addEventListener('fetch', function(e) {
             console.error("[loadPDF] failed:", err);
             showToast("⚠ このPDFを開けませんでした（破損または非対応の形式です）");
             // 読込失敗時は安全な初期状態に戻す（中途半端な状態で操作不能になるのを防ぐ）
-            document.getElementById("drop-zone").style.display   = "flex";
-            document.getElementById("canvas-wrap").style.display = "none";
+            dropZoneEl.style.display   = "flex";
+            canvasWrap.style.display = "none";
           }
         };
 
@@ -1129,7 +1180,7 @@ self.addEventListener('fetch', function(e) {
         const page   = await pdfDoc.getPage(num);
         if (myGen !== renderGeneration) return;
 
-        const canvas = document.getElementById("pdf-canvas");
+        const canvas = pdfCanvasEl;
         const ctx    = canvas.getContext("2d");
         const vp0    = page.getViewport({ scale: 1 });
         baseScale    = Math.min((canvasArea.clientWidth - 16) / vp0.width,
@@ -1167,15 +1218,13 @@ self.addEventListener('fetch', function(e) {
           applyTransform();
           refreshStampDots(num);
         });
-        document.getElementById("page-info-txt").textContent = `${num} / ${totalPages}`;
+        pageInfoTxtEl.textContent = `${num} / ${totalPages}`;
         prevBtnEl.disabled = num <= 1;
         nextBtnEl.disabled = num >= totalPages;
         updateUndoBtn();
       }
 
       // ── ズーム・パン ──────────────────────────────────────────────────────
-      const canvasArea = document.getElementById("canvas-area");
-      const canvasWrap = document.getElementById("canvas-wrap");
       function getAvailSize() {
         return { availW: canvasArea.clientWidth, availH: canvasArea.clientHeight };
       }
@@ -1227,7 +1276,7 @@ self.addEventListener('fetch', function(e) {
 
       let zoomBadgeTimer = null;
       function showZoomBadge() {
-        const el = document.getElementById("zoom-badge");
+        const el = zoomBadgeEl;
         el.textContent = Math.round(zoomScale * 100) + "%";
         el.classList.add("show");
         clearTimeout(zoomBadgeTimer);
@@ -1415,7 +1464,7 @@ self.addEventListener('fetch', function(e) {
           return;
         }
 
-        const pdfSize = parseInt(document.getElementById("stamp-size").value);
+        const pdfSize = parseInt(stampSizeEl.value);
         const num     = colorCounters[currentColor];
         const stamp   = { id: genStampId(), x: pdfX, y: pdfY, num, color: currentColor, pdfSize };
         if (!stamps[currentPage]) stamps[currentPage] = [];
@@ -1455,8 +1504,8 @@ self.addEventListener('fetch', function(e) {
       // 削除モードのON/OFF切替
       function toggleDeleteMode() {
         deleteMode = !deleteMode;
-        document.getElementById("delete-mode-btn").classList.toggle("danger-active", deleteMode);
-        document.getElementById("delete-mode-banner").classList.toggle("show", deleteMode);
+        deleteModeBtnEl.classList.toggle("danger-active", deleteMode);
+        deleteModeBannerEl.classList.toggle("show", deleteMode);
         updateCursor();
       }
 
@@ -1558,7 +1607,7 @@ self.addEventListener('fetch', function(e) {
         if (!pendingRestoreData) return;
         const data = pendingRestoreData;
         pendingRestoreData = null;
-        document.getElementById("restore-overlay").classList.remove("open");
+        restoreOverlayEl.classList.remove("open");
 
         stamps       = data.stamps || {};
         stampHistory = data.stampHistory || [];
@@ -1578,18 +1627,18 @@ self.addEventListener('fetch', function(e) {
 
       function declineRestore() {
         pendingRestoreData = null;
-        document.getElementById("restore-overlay").classList.remove("open");
+        restoreOverlayEl.classList.remove("open");
         clearBackup();
         showToast(`PDF 読み込み完了（${totalPages}ページ）`);
       }
 
       // ── スタンプサイズ変更 ────────────────────────────────────────────────
       function changeStampSize(delta) {
-        const slider = document.getElementById("stamp-size");
+        const slider = stampSizeEl;
         const min = parseInt(slider.min), max = parseInt(slider.max);
         const newVal = Math.max(min, Math.min(max, parseInt(slider.value) + delta));
         slider.value = newVal;
-        document.getElementById("size-val").textContent = newVal;
+        sizeValEl.textContent = newVal;
       }
 
       // ── ページ切り替え ────────────────────────────────────────────────────
@@ -1624,24 +1673,24 @@ self.addEventListener('fetch', function(e) {
       function openSaveDialog() {
         if (!originalPdfBytes) return;
         const ts = formatTimestampForFilename(new Date());
-        document.getElementById("filename-input").value = `${originalFileName}_${ts}`;
-        document.getElementById("filename-overlay").classList.add("open");
+        filenameInputEl.value = `${originalFileName}_${ts}`;
+        filenameOverlayEl.classList.add("open");
         setTimeout(() => {
-          const inp = document.getElementById("filename-input");
+          const inp = filenameInputEl;
           inp.focus(); inp.select();
         }, 120);
       }
 
       function closeFilenameDialog() {
-        document.getElementById("filename-overlay").classList.remove("open");
+        filenameOverlayEl.classList.remove("open");
       }
 
       function closeFilenameIfBg(e) {
-        if (e.target === document.getElementById("filename-overlay")) closeFilenameDialog();
+        if (e.target === filenameOverlayEl) closeFilenameDialog();
       }
 
       async function executeFileSave() {
-        let fname = document.getElementById("filename-input").value.trim()
+        let fname = filenameInputEl.value.trim()
                     || `${originalFileName}_${formatTimestampForFilename(new Date())}`;
         if (!/\.pdf$/i.test(fname)) fname += ".pdf";
         closeFilenameDialog();
@@ -1799,12 +1848,47 @@ self.addEventListener('fetch', function(e) {
       // ── トースト通知 ──────────────────────────────────────────────────────
       let toastTimer = null;
       function showToast(msg) {
-        const el = document.getElementById("toast");
+        const el = toastEl;
         el.textContent = msg;
         el.classList.add("show");
         clearTimeout(toastTimer);
         toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
       }
+
+      // ── 全画面表示切り替え ────────────────────────────────────────────────
+      // 標準のFullscreen APIを使用。iPad Safari（特にホーム画面追加のstandalone
+      // 表示）では、そもそもブラウザのアドレスバー等が最初から非表示のため
+      // 恩恵が薄い場合や、Fullscreen API自体が使えない場合がある。非対応・失敗時は
+      // エラーで処理を止めず、トーストで知らせるだけにする（他の操作の妨げにしない）。
+      function getFullscreenElement() {
+        return document.fullscreenElement || document.webkitFullscreenElement || null;
+      }
+      function toggleFullscreen() {
+        if (!getFullscreenElement()) {
+          const el = document.documentElement;
+          const req = el.requestFullscreen || el.webkitRequestFullscreen;
+          if (!req) {
+            showToast("⚠ この環境では全画面表示に対応していません");
+            return;
+          }
+          req.call(el).catch(() => {
+            showToast("⚠ 全画面表示にできませんでした");
+          });
+        } else {
+          const exit = document.exitFullscreen || document.webkitExitFullscreen;
+          if (exit) exit.call(document);
+        }
+      }
+      // 全画面のON/OFFはブラウザの標準UI（Escキー等）からも変化しうるため、
+      // ボタン自身のクリックだけでなくfullscreenchangeイベントでも見た目を同期する。
+      function syncFullscreenBtn() {
+        const btn = fullscreenBtnEl;
+        const isFs = !!getFullscreenElement();
+        btn.classList.toggle("active", isFs);
+        btn.title = isFs ? "全画面表示を解除" : "全画面表示に切り替え";
+      }
+      document.addEventListener("fullscreenchange", syncFullscreenBtn);
+      document.addEventListener("webkitfullscreenchange", syncFullscreenBtn);
 
       // ── リサイズ対応 ──────────────────────────────────────────────────────
       // resizeは画面回転・Split View分割位置のドラッグなどで短時間に多数発火するため、
@@ -1817,11 +1901,14 @@ self.addEventListener('fetch', function(e) {
       // 回転直後に意図しない場所が表示されてしまう。そのため fitOnLoad=true を渡し、
       // 回転・リサイズ後は常にページ全体がフィットした状態に戻すようにする。
       //
-      // ver0.98：--right-w（延いては--swatch-d）が画面幅基準の可変値になったため、
-      // リサイズ・回転でツールバー幅が変わるとスウォッチ・カウンターサークルの円の
-      // 実サイズも変わる。updateCounterUI()を呼び直して数字のフォントサイズを
-      // 実際の円サイズに追従させる（PDF未読込＝drop-zone表示中でも必要なため、
-      // pdfDocの有無に関わらず常に実行する）。
+      // ver0.98〜1.02では--right-w（延いては--swatch-d）が画面幅基準の可変値
+      // だったため、リサイズ・回転でツールバー幅が変わるとスウォッチ・
+      // カウンターサークルの円の実サイズも変わっていた。ver1.03でJtableとの
+      // 統一のため右ツールバーは固定pxに戻しており、今はここでの実サイズ変化は
+      // 基本的に起きないが、getBoundingClientRect()による実測方式自体は
+      // 汎用的で害がなく、将来またサイズが可変になった場合の保険にもなるため、
+      // updateCounterUI()の呼び直しは残してある（PDF未読込＝drop-zone表示中でも
+      // 動くよう、pdfDocの有無に関わらず常に実行する）。
       let resizeDebounceTimer = null;
       window.addEventListener("resize", () => {
         clearTimeout(resizeDebounceTimer);
@@ -1849,7 +1936,7 @@ self.addEventListener('fetch', function(e) {
       try {
         if (sessionStorage.getItem("jstamp_reopen_picker") === "1") {
           sessionStorage.removeItem("jstamp_reopen_picker");
-          setTimeout(() => document.getElementById("file-input").click(), 50);
+          setTimeout(() => fileInputEl.click(), 50);
         }
       } catch (e) {}
 
@@ -1859,5 +1946,6 @@ self.addEventListener('fetch', function(e) {
     </script>
 
     <a class="app-switch-fab" href="https://joujing9119-maker.github.io/jtable/" title="Jtableに切り替え" onclick="handleAppSwitch(event)">📋</a>
+    <button class="fullscreen-fab" id="fullscreen-fab-btn" onclick="toggleFullscreen()" title="全画面表示に切り替え">⛶</button>
   </body>
 </html>
