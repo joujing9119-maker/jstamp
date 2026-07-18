@@ -488,7 +488,7 @@
         <div id="counter-wrap" title="タップで番号入力／長押しで矢印モード切替">
           <div id="counter-circle-wrap">
             <div id="counter-circle">1</div>
-            <div id="arrow-mode-badge" title="矢印モードON">➤</div>
+            <div id="arrow-mode-badge" class="show" title="矢印モードON">➤</div>
           </div>
           <div id="counter-label">番号</div>
         </div>
@@ -540,7 +540,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.16</div>
+    <div id="version-badge">ver1.18</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -601,7 +601,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.16";
+        const CACHE_NAME = "jstamp-v1.18";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -1644,12 +1644,13 @@ self.addEventListener('fetch', function(e) {
       // ものではない（GUIDE_ANGLES/showArrowGuide()を参照）。
       //
       // 状態変数：
-      //   arrowMode           : 矢印モードのON/OFF（次に置くスタンプに適用される）
+      //   arrowMode           : 矢印モードのON/OFF（次に置くスタンプに適用される）。
+      //                         初期値はtrue（アプリ起動時から矢印モードON、ver1.17〜）。
       //   pendingArrowStamp   : 方向決定タップ待ちのスタンプオブジェクト（stamps配列内と
       //                         同じ参照）。nullなら待機中ではない。
       //   pendingArrowPageNum : 上記スタンプが置かれたページ番号（ページをまたいで
       //                         誤った方向決定が行われないようにするための保険）。
-      let arrowMode           = false;
+      let arrowMode           = true;
       let pendingArrowStamp   = null;
       let pendingArrowPageNum = null;
 
@@ -2000,8 +2001,11 @@ self.addEventListener('fetch', function(e) {
         // 円と同じ色の矢印を描画する。矢印の向きはs.arrowAngle（度数、東=0、
         // 時計回り）で、方向決定タップ（placeTapStamp内）でタップした角度が
         // そのまま入る（8方向へのスナップは行わない）。
+        // 【ver1.18】矢印の長さ（円の縁から先端までの距離）をユーザー依頼により
+        // 半分に変更（sz*0.85 → sz*0.425）。savePDF()側の矢印長も同じ比率で
+        // 半分にし、画面表示とPDF出力の見た目を揃えている。
         if (s.hasArrow && typeof s.arrowAngle === "number") {
-          const arrowLen    = sz * 0.85;
+          const arrowLen    = sz * 0.425;
           const arrowStrokeW = Math.max(1.2, sz * 0.09);
           const arrowSvg = createArrowSvgEl(cx, cy, sz / 2, s.arrowAngle, arrowLen, s.color, arrowStrokeW, "stamp-arrow");
           wrap.appendChild(arrowSvg);
@@ -2286,7 +2290,12 @@ self.addEventListener('fetch', function(e) {
                 const uX = dxScaled / mag, uY = dyScaled / mag;
 
                 const headLen = r * 0.85;
-                const shaftLen = r * 1.55; // 円の中心から矢印先端までの距離
+                // 【ver1.18】矢印の長さ（円の縁から先端までの距離）をユーザー依頼により
+                // 半分に変更。以前は「shaftLen = r*1.55」＝縁から先端まで0.55r
+                // だったところを、0.55r/2 = 0.275r とし、shaftLen = r*(1+0.275) = r*1.275
+                // とした。画面表示側（addDotDOM、arrowLen: sz*0.85→sz*0.425）と同じ
+                // 半分の比率にしており、画面表示とPDF出力の見た目を揃えている。
+                const shaftLen = r * 1.275; // 円の中心から矢印先端までの距離
                 const startVx = cvx + uX * r,        startVy = cvy + uY * r;
                 const tipVx   = cvx + uX * shaftLen, tipVy   = cvy + uY * shaftLen;
                 const revX = -uX, revY = -uY;
