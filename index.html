@@ -91,6 +91,35 @@
         transform-origin: 0 0;
       }
       #pdf-canvas { display: block; }
+      /* 案件名入力欄（ver1.11〜）：Canvas左上に常時表示する。
+         現場で複数の案件・PDFをまたいで同じ案件名を使い続けたいという要望のため、
+         PDFの読込状態（drop-zone表示中かどうか）に関わらず常に表示・入力可能にする。
+         入力値はlocalStorageで永続化し（PROJECT_NAME_KEY）、保存ファイル名の
+         初期値（openSaveDialog）で「案件名が入力されていれば元のPDFファイル名より
+         優先」される。詳細は「4.5 PDF保存」を参照。
+         canvas-area自体にはタップでスタンプを置く/パンする等のタッチ・マウス
+         イベントリスナーが直接ぶら下がっているため、この入力欄の上での操作が
+         誤ってスタンプ配置やパン開始として扱われないよう、ラッパーdiv側の
+         onmousedown/ontouchstartでevent.stopPropagation()を明示的に呼んでいる
+         （HTML側の属性を参照）。 */
+      #project-name-wrap {
+        position: absolute; top: 10px; left: 10px; z-index: 20;
+        display: flex; align-items: center; gap: 6px;
+        background: rgba(20,20,20,0.72); backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        border: 1px solid rgba(255,255,255,0.16); border-radius: 10px;
+        padding: 6px 10px; max-width: calc(100% - 20px);
+      }
+      #project-name-label {
+        font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+        color: rgba(255,255,255,0.45); white-space: nowrap; flex-shrink: 0;
+      }
+      #project-name-input {
+        background: transparent; border: none; outline: none; color: #fff;
+        font-size: 13px; font-weight: 600; width: 42vw; max-width: 220px;
+        min-width: 60px; font-family: inherit;
+      }
+      #project-name-input::placeholder { color: rgba(255,255,255,0.35); font-weight: 400; }
       #drop-zone {
         position: absolute; inset: 0; display: flex; flex-direction: column;
         align-items: center; justify-content: center; gap: 20px;
@@ -166,6 +195,20 @@
         font-weight: 900; color: var(--accent); background: transparent;
         font-size: 20px; transition: border-color 0.2s, color 0.2s; flex-shrink: 0;
       }
+      /* カウンターサークルを長押しすると矢印モードが切り替わる（ver1.12〜）。
+         #counter-circle-wrapはバッジ（#arrow-mode-badge）を右上に絶対配置するための
+         位置基準コンテナ。バッジ自体はクリックを奪わないようpointer-events:noneにし、
+         長押し・タップの判定は#counter-wrap側で行う（JS「13.5 矢印モード」セクション参照）。 */
+      #counter-circle-wrap { position: relative; display: flex; flex-shrink: 0; }
+      #arrow-mode-badge {
+        position: absolute; top: -3px; right: -3px;
+        width: 20px; height: 20px; border-radius: 50%;
+        background: #f39c12; color: #1a1a1a; font-size: 11px; font-weight: 900;
+        display: none; align-items: center; justify-content: center;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.55); border: 1.5px solid #1a1a1a;
+        pointer-events: none; transform: rotate(45deg);
+      }
+      #arrow-mode-badge.show { display: flex; }
       #counter-label { font-size: 11px; color: rgba(255,255,255,0.5); text-align: center; }
       .tb-icon-btn {
         width: var(--nav-btn-w); height: var(--nav-btn-h); flex-shrink: 0;
@@ -377,6 +420,41 @@
         box-shadow: 0 2px 12px rgba(192,57,43,0.6);
       }
       #delete-mode-banner.show { display: block; }
+      /* 矢印の方向決定タップ待ちであることを示すバナー（ver1.12〜）。
+         delete-mode-bannerと同じ位置（canvas-area上端）に重ねて表示するが、
+         矢印モードの待機中は必ずcancelPendingArrow()経由でdeleteMode切替時にも
+         解除されるため、両バナーが同時に表示されることはない設計になっている。
+         色は削除（赤系）と混同しないよう、切り替えボタン（.app-switch-fab）と
+         同系統の紫にしている。 */
+      #arrow-wait-banner {
+        position: absolute; top: 0; left: 0; right: 0;
+        background: #5b3df0; color: #fff;
+        font-size: 14px; font-weight: 700; letter-spacing: 0.05em;
+        text-align: center; padding: 8px 0; z-index: 60;
+        display: none; pointer-events: none;
+        box-shadow: 0 2px 12px rgba(91,61,240,0.6);
+      }
+      #arrow-wait-banner.show { display: block; }
+      /* 矢印付きスタンプの矢印本体・待機中の8方向ガイド・待機中リングは、
+         いずれもSVG/div（.stamp-arrow / .arrow-guide / .arrow-wait-ring）として
+         JS側（createArrowSvgEl・showArrowGuide）が動的に生成し#canvas-wrapへ
+         子要素として追加する。#canvas-wrap自体がパン・ズームのtransformを持つ
+         ため、通常のスタンプ（.stamp-dot）と同じ座標系にいる限り、追加の
+         transform計算なしでパン・ズームに追従する。
+         【重要】.arrow-guide（8方向ガイド）は角度のスナップとは無関係の、
+         「待機状態であることを示す視覚的な目印」に過ぎない。矢印の実際の角度は
+         常にタップ位置から計算する自由な値（8方向への丸めなし）を使う。
+         詳細は「8. 既知の設計上の判断」を参照。 */
+      .stamp-arrow, .arrow-guide { pointer-events: none; }
+      .arrow-wait-ring {
+        position: absolute; border: 2px dashed rgba(255,255,255,0.8);
+        border-radius: 50%; pointer-events: none;
+        animation: arrowWaitPulse 1.1s ease-in-out infinite;
+      }
+      @keyframes arrowWaitPulse {
+        0%, 100% { opacity: 0.3; }
+        50%      { opacity: 0.85; }
+      }
       .tb-icon-btn.danger-active { background: var(--accent); color: #fff; }
       .tb-icon-btn.danger-active:active { background: var(--accent2); }
     </style>
@@ -384,11 +462,18 @@
   <body>
     <div id="viewport">
       <div id="canvas-area">
+        <div id="project-name-wrap" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()">
+          <span id="project-name-label">案件名</span>
+          <input type="text" id="project-name-input" placeholder="未設定" autocomplete="off"
+                 oninput="onProjectNameInput(this.value)"
+                 onkeydown="if(event.key==='Enter') this.blur()" />
+        </div>
         <div id="delete-mode-banner">🗑 削除モード中：スタンプをタップして削除</div>
+        <div id="arrow-wait-banner">➤ タップして矢印の方向を決めてください（削除ボタンでキャンセル）</div>
         <div id="drop-zone">
           <div class="dz-icon">📄</div>
           <h2>PDFファイルを選択してください</h2>
-          <p>「PDF を開く」ボタンをタップして<br />スタンプを押すPDFを読み込みます</p>
+          <p>「PDF を開く」ボタンをタップして<br />スタンプを押すPDFを読み込みます<br />（複数選択すると1つのPDFに結合して開きます）</p>
           <button class="btn-open-big" onclick="openFilePicker()">
             📂 PDF を開く
           </button>
@@ -400,8 +485,11 @@
 
       <div id="toolbar-right">
         <div class="tb-label">次</div>
-        <div id="counter-wrap" onclick="openNumpad()" title="タップして番号を直接入力">
-          <div id="counter-circle">1</div>
+        <div id="counter-wrap" title="タップで番号入力／長押しで矢印モード切替">
+          <div id="counter-circle-wrap">
+            <div id="counter-circle">1</div>
+            <div id="arrow-mode-badge" title="矢印モードON">➤</div>
+          </div>
           <div id="counter-label">番号</div>
         </div>
         <div class="tb-divider"></div>
@@ -423,7 +511,7 @@
         <div class="tb-divider"></div>
         <div class="tb-label">PDF</div>
         <div class="toolbar-group">
-          <button class="tb-icon-btn accent" onclick="openFilePicker()" title="PDFを開く">
+          <button class="tb-icon-btn accent" onclick="openFilePicker()" title="PDFを開く（複数選択で結合）">
             <span class="ib-icon">📂</span><span class="ib-txt">開く</span>
           </button>
           <button class="tb-icon-btn success" id="save-btn" disabled onclick="openSaveDialog()" title="PDFを保存">
@@ -439,7 +527,7 @@
         <div class="tb-vdivider"></div>
         <div class="slider-group">
           <label>大きさ</label>
-          <input type="range" id="stamp-size" min="10" max="40" value="20" step="1" oninput="document.getElementById('size-val').textContent=this.value" />
+          <input type="range" id="stamp-size" min="10" max="40" value="20" step="1" oninput="onStampSizeInput(this.value)" />
           <span class="slider-val" id="size-val">20</span>
         </div>
         <div class="tb-vdivider"></div>
@@ -452,7 +540,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.10</div>
+    <div id="version-badge">ver1.16</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -501,7 +589,10 @@
     </div>
 
     <div id="toast"></div>
-    <input type="file" id="file-input" accept="application/pdf" onchange="loadPDF(this)" />
+    <!-- ver1.11〜：複数ファイル選択に対応（multiple属性）。1件選択時は従来通りの
+         単一PDF読込、2件以上選択時はloadPDF()内でpdf-libによる結合を行う。
+         詳細は「4.1 PDF操作」「9. PDF読み込み」を参照。 -->
+    <input type="file" id="file-input" accept="application/pdf" multiple onchange="loadPDF(this)" />
 
     <script>
       // 新しいService Workerへの切替が保留中かどうか（作業中は安全のためリロードを待つ）
@@ -510,7 +601,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.10";
+        const CACHE_NAME = "jstamp-v1.16";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -657,7 +748,15 @@ self.addEventListener('fetch', function(e) {
       let deleteMode        = false;
       // 直前の保存以降に未保存の変更があるかどうか
       let hasUnsavedChanges = false;
-      // 復元確認ダイアログ表示中、ユーザーの選択を待っているバックアップデータ
+      // 復元確認ダイアログ表示中、ユーザーの選択を待っているバックアップデータ。
+      // 【ver1.13で修正】このコメントの直後にlet宣言が来る想定だったとみられるが、
+      // 実際には宣言文自体が抜け落ちており、`pendingRestoreData`はどこにも
+      // let/const/varされないまま`loadPDF()`/`acceptRestore()`/`declineRestore()`
+      // から代入・参照される暗黙のグローバル変数になっていた（非strictモードの
+      // スクリプトでは代入だけで暗黙的にグローバル変数が生成されるため、実害
+      // なく動作はしていたが、strictモードでは即エラーになる潜在的バグだった）。
+      // ESLint（no-undefルール）で検出し、明示的な宣言を追加した。
+      let pendingRestoreData = null;
       // ── DOM要素のキャッシュ ──────────────────────────────────────────────
       // 静的に存在し、複数の関数から繰り返し参照される要素はここで一度だけ
       // 取得してまとめてキャッシュする（`getElementById`自体は高速だが、
@@ -674,6 +773,9 @@ self.addEventListener('fetch', function(e) {
       const pdfCanvasEl      = document.getElementById("pdf-canvas");
       const pageInfoTxtEl    = document.getElementById("page-info-txt");
       const counterCircleEl  = document.getElementById("counter-circle");
+      const counterWrapEl    = document.getElementById("counter-wrap");
+      const arrowModeBadgeEl = document.getElementById("arrow-mode-badge");
+      const arrowWaitBannerEl = document.getElementById("arrow-wait-banner");
       const stampSizeEl      = document.getElementById("stamp-size");
       const sizeValEl        = document.getElementById("size-val");
       const fileInputEl      = document.getElementById("file-input");
@@ -687,6 +789,7 @@ self.addEventListener('fetch', function(e) {
       const zoomBadgeEl      = document.getElementById("zoom-badge");
       const toastEl          = document.getElementById("toast");
       const fullscreenBtnEl  = document.getElementById("fullscreen-fab-btn");
+      const projectNameInputEl = document.getElementById("project-name-input");
 
       // 色ごとのカウンター（キー: color文字列, 値: 次に置く番号 1〜999）
       const colorCounters = Object.fromEntries(PALETTE.map(p => [p.color, 1]));
@@ -741,6 +844,45 @@ self.addEventListener('fetch', function(e) {
       function markDataChanged() {
         hasUnsavedChanges = true;
         saveBackup();
+      }
+
+      // ── 案件名（保存ファイル名のベースとして使う永続的な名前・ver1.11〜） ─────
+      // Canvas左上に常時表示するテキスト入力欄（#project-name-input）の値。
+      // 現場で複数の案件・PDFをまたいで同じ案件名を使い続けたいという要望のため、
+      // PDFごとのバックアップ（BACKUP_KEY、ファイル名・サイズで同一性判定）とは別に、
+      // アプリ全体で共有する単一の値としてlocalStorageに永続化する。アプリを閉じて
+      // 開き直しても、また別のPDFを開いても値は消えない（PDFを開いても意図的に
+      // リセットしない。ユーザーが手動で書き換える運用）。
+      // 保存ファイル名の初期値（openSaveDialog）は、この案件名が入力されていれば
+      // 元のPDFファイル名（または結合PDFの自動生成名）より優先して使う。
+      // 詳細は「4.5 PDF保存」を参照。
+      const PROJECT_NAME_KEY = "jstamp_project_name";
+      let projectName = "";
+      try {
+        projectName = localStorage.getItem(PROJECT_NAME_KEY) || "";
+      } catch (e) {
+        console.warn("[projectName] load failed:", e.message);
+      }
+      projectNameInputEl.value = projectName;
+
+      // 入力欄のoninputから呼ばれる。案件名はスタンプデータと違って軽量な短い
+      // 文字列のため、キー入力のたびにlocalStorageへ即時保存してもコストは
+      // 無視できるほど小さい（デバウンス等は行わない）。
+      function onProjectNameInput(value) {
+        projectName = value;
+        try {
+          localStorage.setItem(PROJECT_NAME_KEY, projectName);
+        } catch (e) {
+          console.warn("[projectName] save failed:", e.message);
+        }
+      }
+
+      // ファイル名として使うと保存に失敗する可能性のある記号を安全な文字に
+      // 置き換える。originalFileName（OSのファイル選択ダイアログを経由した
+      // 実在のファイル名）は基本的にこの心配がないため対象外だが、案件名は
+      // ユーザーが自由に入力する文字列のため、ここでのみ使用する。
+      function sanitizeForFilename(s) {
+        return s.replace(/[\\/:*?"<>|]/g, "_");
       }
 
       // ── アプリ切り替え（Jtable⇔Jスタンプ）時のPDF引き継ぎ ─────────────────
@@ -882,11 +1024,13 @@ self.addEventListener('fetch', function(e) {
           totalPages   = pdfDoc.numPages;
           currentPage  = Math.min(Math.max(1, data.currentPage || 1), totalPages);
           stamps       = data.stamps || {};
+          normalizeAllStampsArrowFields(stamps);
           stampHistory = data.stampHistory || [];
           recalcNextStampId();
           Object.assign(colorCounters, data.colorCounters || {});
           hasUnsavedChanges = !!data.hasUnsavedChanges;
           if (deleteMode) toggleDeleteMode();
+          cancelPendingArrow();
 
           dropZoneEl.style.display   = "none";
           canvasWrap.style.display = "block";
@@ -1011,6 +1155,7 @@ self.addEventListener('fetch', function(e) {
       }
 
       function selectColor(color) {
+        cancelPendingArrow();
         currentColor = color;
         swatchEls.forEach((sw, c) => {
           sw.classList.toggle("active", c === color);
@@ -1022,6 +1167,7 @@ self.addEventListener('fetch', function(e) {
       let npValue = "";
 
       function openNumpad() {
+        cancelPendingArrow();
         npValue = String(colorCounters[currentColor]);
         numpadDisplayEl.textContent = npValue;
         numpadOverlayEl.classList.add("open");
@@ -1064,6 +1210,7 @@ self.addEventListener('fetch', function(e) {
 
       // 現在選択中の色のカウンターのみを1にリセット
       function resetCounter() {
+        cancelPendingArrow();
         colorCounters[currentColor] = 1;
         updateCounterUI();
         showToast("番号を「1」にリセットしました");
@@ -1075,6 +1222,7 @@ self.addEventListener('fetch', function(e) {
       // ここで安全にリロードしてから最新版でファイル選択を行う。
       // 未保存の変更がある場合はリロードせず、そのまま通常通りファイルを開く。
       function openFilePicker() {
+        cancelPendingArrow();
         if (pendingReload && !hasUnsavedChanges) {
           pendingReload = false;
           try { sessionStorage.setItem("jstamp_reopen_picker", "1"); } catch (e) {}
@@ -1084,83 +1232,119 @@ self.addEventListener('fetch', function(e) {
         fileInputEl.click();
       }
 
+      // ver1.11〜：#file-inputにmultiple属性を付けたため、1件選択時は従来通りの
+      // 単一PDF読込、2件以上選択時はpdf-libで結合してから1つの新規PDFとして開く
+      // （「今開いているPDFへの追記」ではなく、常に新規読込として扱う）。
+      // 結合順序はFileList（ファイル選択ダイアログが返す並び順。多くの環境では
+      // 選択した順だが、OS・ブラウザによってはファイル名順になる場合がある）の
+      // ままとし、アプリ側で並び替えは行わない。
+      //
+      // 以前はFileReader（onload/onerrorのコールバック形式）でファイルを読んでいたが、
+      // 複数ファイルをawaitで順番に処理する都合上、Promiseベースの
+      // File.arrayBuffer()に統一した（iPad Safari 14以降で利用可能）。
+      // 読み込み失敗はPromiseのreject経由でtry/catchに捕捉されるため、
+      // 以前のreader.onerrorと同等のエラーハンドリングを維持できている。
       async function loadPDF(input) {
-        const file = input.files[0];
-        if (!file) return;
-        if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") {
+        const files = Array.from(input.files || []);
+        if (files.length === 0) return;
+
+        const invalid = files.some(f => !/\.pdf$/i.test(f.name) && f.type !== "application/pdf");
+        if (invalid) {
           showToast("⚠ PDFファイルを選択してください");
           input.value = "";
           return;
         }
-        showToast("読み込み中...");
-        const reader = new FileReader();
 
-        // ファイル読み込み自体の失敗（ストレージI/Oエラー等）に対するハンドリング。
-        // 未定義のままだと無音で失敗し、画面が「読み込み中...」のまま固まって見える。
-        reader.onerror = () => {
-          showToast("⚠ ファイルの読み込みに失敗しました");
-          input.value = "";
-        };
+        const isMerge = files.length > 1;
+        showToast(isMerge ? `PDFを結合中...（${files.length}件）` : "読み込み中...");
 
-        reader.onload = async (e) => {
-          try {
-            const rawBuffer  = e.target.result;
-            const newBytes   = new Uint8Array(rawBuffer);
-            const pdfJsData  = newBytes.slice();
+        try {
+          let newBytes;
+          let baseFileName;
 
-            // 既存のPDFドキュメントが残っている場合、Worker側に保持された
-            // ページキャッシュ等のリソースを明示的に解放する。
-            // 代入だけではWorker側のメモリは解放されず、開き直すたびに蓄積していく。
-            if (pdfDoc && typeof pdfDoc.destroy === "function") {
-              pdfDoc.destroy();
+          if (!isMerge) {
+            const buf = await files[0].arrayBuffer();
+            newBytes     = new Uint8Array(buf);
+            baseFileName = files[0].name.replace(/\.pdf$/i, "") || "jstamp";
+          } else {
+            // 複数PDFを選択順にすべて結合する。copyPagesは元PDFの/Rotate等の
+            // ページ属性も維持するため、savePDF()側の回転考慮ロジック（drawCircle/
+            // drawText時の座標変換）は結合後のPDFにもそのまま適用できる。
+            const { PDFDocument } = PDFLib;
+            const mergedDoc = await PDFDocument.create();
+            for (const f of files) {
+              const buf     = await f.arrayBuffer();
+              const srcDoc  = await PDFDocument.load(buf);
+              const indices = srcDoc.getPageIndices();
+              const copied  = await mergedDoc.copyPages(srcDoc, indices);
+              copied.forEach(p => mergedDoc.addPage(p));
             }
-
-            const newDoc = await pdfjsLib.getDocument({ data: pdfJsData }).promise;
-
-            // ここまで到達して初めて状態を確定する（途中で例外が出ても前の状態を壊さない）
-            originalPdfBytes = newBytes;
-            originalFileName = file.name.replace(/\.pdf$/i, "") || "jstamp";
-            pdfDoc       = newDoc;
-            totalPages   = pdfDoc.numPages;
-            currentPage  = 1;
-            stamps       = {};
-            stampHistory = [];
-            nextStampId  = 1;
-            hasUnsavedChanges = false;
-            if (deleteMode) toggleDeleteMode();
-            PALETTE.forEach(p => { colorCounters[p.color] = 1; });
-            dropZoneEl.style.display   = "none";
-            canvasWrap.style.display = "block";
-            saveBtnEl.disabled = false;
-            undoBtnEl.disabled = true;
-            prevBtnEl.disabled = false;
-            nextBtnEl.disabled = false;
-            stampSizeEl.value  = 20;
-            sizeValEl.textContent = "20";
-            updateCounterUI();
-            await renderPage(currentPage, true);
-
-            // 同じファイル（名前・サイズ一致）に対する未保存の作業がlocalStorageに
-            // 残っていれば、復元するかどうかをユーザーに確認する。
-            // アプリやデバイスの都合（強制終了・リロード等）でスタンプの位置データが
-            // 失われることを防ぐための最終防衛線。
-            const backup = loadBackupIfMatches(originalFileName, originalPdfBytes.length);
-            if (backup) {
-              pendingRestoreData = backup;
-              restoreOverlayEl.classList.add("open");
-            } else {
-              showToast(`PDF 読み込み完了（${totalPages}ページ）`);
-            }
-          } catch (err) {
-            console.error("[loadPDF] failed:", err);
-            showToast("⚠ このPDFを開けませんでした（破損または非対応の形式です）");
-            // 読込失敗時は安全な初期状態に戻す（中途半端な状態で操作不能になるのを防ぐ）
-            dropZoneEl.style.display   = "flex";
-            canvasWrap.style.display = "none";
+            newBytes = await mergedDoc.save();
+            // 結合PDFは単一の元ファイル名を持たないため、件数を含めた名前を
+            // 自動生成する（案件名が未入力の場合の保存ファイル名フォールバックにも
+            // なる。「4.5 PDF保存」参照）。
+            baseFileName = `結合PDF_${files.length}件`;
           }
-        };
 
-        reader.readAsArrayBuffer(file);
+          const pdfJsData = newBytes.slice();
+
+          // 既存のPDFドキュメントが残っている場合、Worker側に保持された
+          // ページキャッシュ等のリソースを明示的に解放する。
+          // 代入だけではWorker側のメモリは解放されず、開き直すたびに蓄積していく。
+          if (pdfDoc && typeof pdfDoc.destroy === "function") {
+            pdfDoc.destroy();
+          }
+
+          const newDoc = await pdfjsLib.getDocument({ data: pdfJsData }).promise;
+
+          // ここまで到達して初めて状態を確定する（途中で例外が出ても前の状態を壊さない）
+          originalPdfBytes = newBytes;
+          originalFileName = baseFileName;
+          pdfDoc       = newDoc;
+          totalPages   = pdfDoc.numPages;
+          currentPage  = 1;
+          stamps       = {};
+          stampHistory = [];
+          nextStampId  = 1;
+          hasUnsavedChanges = false;
+          if (deleteMode) toggleDeleteMode();
+          cancelPendingArrow();
+          PALETTE.forEach(p => { colorCounters[p.color] = 1; });
+          dropZoneEl.style.display   = "none";
+          canvasWrap.style.display = "block";
+          saveBtnEl.disabled = false;
+          undoBtnEl.disabled = true;
+          prevBtnEl.disabled = false;
+          nextBtnEl.disabled = false;
+          stampSizeEl.value  = 20;
+          sizeValEl.textContent = "20";
+          updateCounterUI();
+          await renderPage(currentPage, true);
+
+          // 同じファイル（名前・サイズ一致）に対する未保存の作業がlocalStorageに
+          // 残っていれば、復元するかどうかをユーザーに確認する。
+          // アプリやデバイスの都合（強制終了・リロード等）でスタンプの位置データが
+          // 失われることを防ぐための最終防衛線。結合PDFの場合はbaseFileName
+          // （件数込みの自動生成名）とバイト数の組み合わせで同一性を判定する。
+          const backup = loadBackupIfMatches(originalFileName, originalPdfBytes.length);
+          if (backup) {
+            pendingRestoreData = backup;
+            restoreOverlayEl.classList.add("open");
+          } else {
+            showToast(isMerge
+              ? `✅ ${files.length}件のPDFを結合しました（全${totalPages}ページ）`
+              : `PDF 読み込み完了（${totalPages}ページ）`);
+          }
+        } catch (err) {
+          console.error("[loadPDF] failed:", err);
+          showToast(isMerge
+            ? "⚠ PDFの結合に失敗しました（破損または非対応の形式が含まれている可能性があります）"
+            : "⚠ このPDFを開けませんでした（破損または非対応の形式です）");
+          // 読込失敗時は安全な初期状態に戻す（中途半端な状態で操作不能になるのを防ぐ）
+          dropZoneEl.style.display   = "flex";
+          canvasWrap.style.display = "none";
+        }
+
         input.value = "";
       }
 
@@ -1448,6 +1632,233 @@ self.addEventListener('fetch', function(e) {
       document.addEventListener("gesturechange", (e) => { e.preventDefault(); }, { passive: false });
       document.addEventListener("gestureend", (e) => { e.preventDefault(); }, { passive: false });
 
+      // ── 矢印モード（ver1.12〜、ver1.15で8方向スナップを廃止し任意角度に変更、
+      //    ver1.16で8方向ガイド表示を復元） ──────────────────────────────────
+      // カウンターサークルを長押しするとON/OFFが切り替わる「矢印モード」。
+      // ONの状態でCanvasをタップすると、1回目のタップで丸数字スタンプを配置し、
+      // 2回目のタップ（方向決定タップ）で「スタンプ中心から見たそのタップ位置の
+      // 角度」をそのまま矢印の向きにする（8方向への丸め＝スナップは行わない。
+      // placeTapStamp内のpendingArrowStamp分岐で処理）。待機中は周囲に8方向の
+      // ガイド矢印を表示するが、これは角度のスナップとは無関係の「待機状態を
+      // 示す視覚的な目印」であり、実際にタップできる角度を8方向に制限する
+      // ものではない（GUIDE_ANGLES/showArrowGuide()を参照）。
+      //
+      // 状態変数：
+      //   arrowMode           : 矢印モードのON/OFF（次に置くスタンプに適用される）
+      //   pendingArrowStamp   : 方向決定タップ待ちのスタンプオブジェクト（stamps配列内と
+      //                         同じ参照）。nullなら待機中ではない。
+      //   pendingArrowPageNum : 上記スタンプが置かれたページ番号（ページをまたいで
+      //                         誤った方向決定が行われないようにするための保険）。
+      let arrowMode           = false;
+      let pendingArrowStamp   = null;
+      let pendingArrowPageNum = null;
+
+      // 【ver1.12〜1.14で使用していた8方向スナップ時代の名残】
+      // ver1.15でスナップを廃止し、矢印の向きはs.arrowAngle（度数、画面・CSS座標系＝
+      // Y軸下向き基準でMath.atan2(dy,dx)がそのまま返す値、0〜360）という自由な角度で
+      // 保持するようになった。LEGACY_DIR_TO_ANGLEは、ver1.12〜1.14時代に保存された
+      // 古いバックアップ・ハンドオフデータ（8方向キーの`arrowDir`のみを持ち
+      // `arrowAngle`を持たない）を読み込んだ際、方向キーを角度に変換するための
+      // 後方互換マッピングとしてのみ残している（`normalizeStampArrowFields()`から
+      // 参照。新規に矢印を確定する処理では一切使わない）。
+      const LEGACY_DIR_TO_ANGLE = { E: 0, SE: 45, S: 90, SW: 135, W: 180, NW: 225, N: 270, NE: 315 };
+
+      // 復元・ハンドオフ復元で読み込んだ1件のスタンプデータに対し、旧8方向スナップ
+      // 時代のarrowDirしか持っていない場合はarrowAngleへ変換する（新旧混在データの
+      // 読み込みでも矢印が消えたり描画エラーになったりしないようにするための保険）。
+      function normalizeStampArrowFields(s) {
+        if (s && s.hasArrow && typeof s.arrowAngle !== "number" && s.arrowDir && LEGACY_DIR_TO_ANGLE[s.arrowDir] !== undefined) {
+          s.arrowAngle = LEGACY_DIR_TO_ANGLE[s.arrowDir];
+        }
+      }
+      // stamps全体（{pageNum: [stamp, ...]}）に対してnormalizeStampArrowFields()を
+      // 一括適用する。バックアップ復元（acceptRestore）・アプリ切り替えハンドオフ
+      // 復元（tryRestoreHandoffIfReturning）の直後に呼ぶ。
+      function normalizeAllStampsArrowFields(stampsObj) {
+        Object.values(stampsObj || {}).forEach((list) => (list || []).forEach(normalizeStampArrowFields));
+      }
+
+      // 方向決定タップの位置（dx, dyはスタンプ中心からの相対座標、PDF/CSS座標系＝
+      // Y軸下向き）から、矢印の角度（度数、0〜360、東=0、時計回り）を計算する。
+      // ver1.14までは8方向へ丸めていたが、ver1.15でユーザー要望によりスナップを
+      // 廃止し、タップした角度をそのまま使うようにした。
+      function computeTapAngleDeg(dx, dy) {
+        if (dx === 0 && dy === 0) return 0; // スタンプ中心と完全同一座標へのタップという
+                                             // 理論上まず起きないケースのフォールバック（東扱い）
+        let angle = Math.atan2(dy, dx) * 180 / Math.PI; // -180〜180
+        if (angle < 0) angle += 360;                     // 0〜360に正規化
+        return angle;
+      }
+
+      // ベクトル(x, y)をdeg度（時計回り）回転させる。矢じり2本の向き計算に使う
+      // 純粋な幾何計算で、画面表示側（buildArrowMarkup）とPDF出力側
+      // （savePDF内の矢印描画）の両方から共通で呼び出す（ver1.13でコード重複を
+      // 解消するために切り出した。それ以前は両箇所にほぼ同じ内容のローカル関数
+      // rot()/rot2()が個別に存在していた）。
+      function rotateVectorDeg(x, y, deg) {
+        const r = deg * Math.PI / 180;
+        return { x: x * Math.cos(r) - y * Math.sin(r), y: x * Math.sin(r) + y * Math.cos(r) };
+      }
+
+      // 矢印（線分3本＝軸＋矢じり2本）の描画データを計算する。
+      // centerCx/centerCyはCanvas座標系（#canvas-wrap基準）でのスタンプ中心。
+      // radiusは円の半径、lengthは円の縁から矢印の先端までの長さ、
+      // angleDegは矢印の向き（度数、東=0、時計回り＝画面・CSS座標系のY軸下向き
+      // 基準。computeTapAngleDeg()が返す値と同じ規約）、colorは線の色、
+      // strokeWは線の太さ。戻り値はSVG要素として組み立てるための位置・サイズ・
+      // 内部HTML。塗りつぶし三角形（polygon）ではなく矢じりを2本の短い線分で
+      // 表現しているのは、pdf-lib側（savePDF）でも同じ考え方（drawLineの組み合わせ）
+      // で矢印を再現し、画面表示とPDF出力の見た目を極力揃えるため。
+      // 【ver1.15】8方向スナップの廃止に伴い、引数を8方向キー（dirKey）から
+      // 自由な角度（angleDeg）に変更した。
+      function buildArrowMarkup(centerCx, centerCy, radius, angleDeg, length, color, strokeW) {
+        const rad = angleDeg * Math.PI / 180;
+        const v = { x: Math.cos(rad), y: Math.sin(rad) };
+        const startX = v.x * radius, startY = v.y * radius;
+        const tipX   = v.x * (radius + length), tipY = v.y * (radius + length);
+        const headLen = Math.max(4, length * 0.42);
+        const revX = -v.x, revY = -v.y;
+        const h1 = rotateVectorDeg(revX, revY, 28);
+        const h2 = rotateVectorDeg(revX, revY, -28);
+        const h1x = tipX + h1.x * headLen, h1y = tipY + h1.y * headLen;
+        const h2x = tipX + h2.x * headLen, h2y = tipY + h2.y * headLen;
+
+        const margin = strokeW * 4 + headLen;
+        const minX = Math.min(startX, tipX, h1x, h2x) - margin;
+        const maxX = Math.max(startX, tipX, h1x, h2x) + margin;
+        const minY = Math.min(startY, tipY, h1y, h2y) - margin;
+        const maxY = Math.max(startY, tipY, h1y, h2y) + margin;
+        const w = maxX - minX, h = maxY - minY;
+        const L = (x) => x - minX, T = (y) => y - minY;
+
+        return {
+          left: centerCx + minX, top: centerCy + minY, width: w, height: h,
+          html:
+            `<line x1="${L(startX)}" y1="${T(startY)}" x2="${L(tipX)}" y2="${T(tipY)}" stroke="${color}" stroke-width="${strokeW}" stroke-linecap="round"/>` +
+            `<line x1="${L(tipX)}" y1="${T(tipY)}" x2="${L(h1x)}" y2="${T(h1y)}" stroke="${color}" stroke-width="${strokeW}" stroke-linecap="round"/>` +
+            `<line x1="${L(tipX)}" y1="${T(tipY)}" x2="${L(h2x)}" y2="${T(h2y)}" stroke="${color}" stroke-width="${strokeW}" stroke-linecap="round"/>`,
+        };
+      }
+
+      // buildArrowMarkup()の結果からSVG要素を組み立てる。#canvas-wrapの子要素として
+      // 追加することで、.stamp-dotと同じ座標系（パン・ズームのtransformが自動的に
+      // 適用される）に乗る。
+      function createArrowSvgEl(centerCx, centerCy, radius, angleDeg, length, color, strokeW, className) {
+        const m = buildArrowMarkup(centerCx, centerCy, radius, angleDeg, length, color, strokeW);
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", className);
+        svg.setAttribute("width", m.width);
+        svg.setAttribute("height", m.height);
+        svg.setAttribute("viewBox", `0 0 ${m.width} ${m.height}`);
+        svg.style.cssText = `position:absolute; left:${m.left}px; top:${m.top}px; overflow:visible;`;
+        svg.innerHTML = m.html;
+        return svg;
+      }
+
+      // 待機中に表示する8方向ガイド矢印の角度（度数、東=0起点・時計回り45度刻み）。
+      // 【重要・ver1.16で復元】これは「矢印がこの8方向のいずれかにスナップされる」
+      // という意味ではない。矢印の実際の角度は常にcomputeTapAngleDeg()がタップ位置
+      // から計算する自由な角度をそのまま使う（8方向への丸めは行わない。ver1.15で
+      // スナップ自体を廃止済み、今後も復活させない）。このガイドは純粋に「このスタンプが
+      // 方向決定タップ待ちの状態である」ことを視覚的にわかりやすくするための目印であり、
+      // 8方向はバランスよく円周を示すための表示上の選択に過ぎない。
+      // （ver1.15時点で一度撤去していたが、「8方向表示はスナップのガイドではなく
+      // 待機状態を示す目印だった」というユーザー指摘を受け、ver1.16で復元した。
+      // 詳細は「8. 既知の設計上の判断」を参照。）
+      const GUIDE_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315];
+
+      // 方向決定タップ待ち中に、置いたばかりのスタンプの周囲へ8方向の薄いガイド
+      // 矢印と、点滅する点線リングを表示し、「待機状態であることをわかりやすく」する。
+      // 上記GUIDE_ANGLESの通り、このガイドは角度のスナップとは無関係の視覚的な
+      // 目印にすぎない。実際の方向決定はcomputeTapAngleDeg()による自由な角度計算
+      // のみで行われ、ガイドの真上を正確にタップする必要はない。
+      function showArrowGuide(stamp) {
+        clearArrowGuide();
+        const wrap   = canvasWrap;
+        const cx     = Math.round(stamp.x * baseScale);
+        const cy     = Math.round(stamp.y * baseScale);
+        const sz     = Math.round(stamp.pdfSize * baseScale);
+        const radius = sz / 2;
+        const length = sz * 0.55;
+        const strokeW = Math.max(1, sz * 0.05);
+        GUIDE_ANGLES.forEach((angle) => {
+          const el = createArrowSvgEl(cx, cy, radius, angle, length, "rgba(255,255,255,0.55)", strokeW, "arrow-guide");
+          wrap.appendChild(el);
+        });
+        const ring = document.createElement("div");
+        ring.className = "arrow-wait-ring";
+        const ringSz = sz * 1.35;
+        ring.style.cssText =
+          `left:${cx}px;top:${cy}px;width:${ringSz}px;height:${ringSz}px;` +
+          `transform:translate(-50%,-50%);border-color:${stamp.color};`;
+        wrap.appendChild(ring);
+      }
+
+      function clearArrowGuide() {
+        // ガイド（.arrow-guide/.arrow-wait-ring）はshowArrowGuide()で必ず
+        // #canvas-wrapの子要素として追加されるため、documentツリー全体ではなく
+        // canvasWrap配下だけを探索すれば十分（ver1.13で最適化）。
+        canvasWrap.querySelectorAll(".arrow-guide, .arrow-wait-ring").forEach((el) => el.remove());
+      }
+
+      // 方向決定タップ待ちを取り消す。矢印は付与されず、スタンプは矢印なしの
+      // 丸数字のまま確定した状態になる（stamps配列・stampHistoryへは既に
+      // 通常のスタンプとして登録済みのため、ここでは待機UIの解除のみ行う）。
+      // 削除モードの切替、ページ送り、戻す、色選択、番号リセット、テンキーを開く、
+      // PDFを開く、保存ダイアログを開く、全画面切替など「スタンプ配置以外の
+      // ほとんどの操作」の入口で呼び出し、待機状態を残さないようにしている。
+      function cancelPendingArrow() {
+        if (!pendingArrowStamp) return;
+        pendingArrowStamp   = null;
+        pendingArrowPageNum = null;
+        clearArrowGuide();
+        arrowWaitBannerEl.classList.remove("show");
+      }
+
+      // カウンターサークルの長押しで矢印モードをON/OFFする。
+      function toggleArrowMode() {
+        cancelPendingArrow();
+        arrowMode = !arrowMode;
+        arrowModeBadgeEl.classList.toggle("show", arrowMode);
+        showToast(arrowMode ? "➤ 矢印モードON：スタンプに方向を付けられます" : "矢印モードOFF");
+      }
+
+      // カウンターサークル（#counter-wrap）は従来「タップでテンキーを開く」
+      // 操作のみを持っていたが、ver1.12で「長押しで矢印モード切替」を追加した。
+      // タッチ・マウスそれぞれでタイマーによる長押し判定を行い、閾値
+      // （LONG_PRESS_MS）に達する前に指・ボタンが離された場合のみ従来通り
+      // openNumpad()を呼ぶ。isTouchDevice（「12. タッチ・ピンチ処理」で定義）は
+      // このコード片より後ろで宣言されているが、実際にユーザーが操作する時点
+      // （スクリプト全体の初期実行が完了した後）には既に初期化済みのため、
+      // クロージャ経由の参照として問題なく動作する。
+      const LONG_PRESS_MS = 550;
+      let counterPressTimer     = null;
+      let counterLongPressFired = false;
+
+      function startCounterPress() {
+        counterLongPressFired = false;
+        clearTimeout(counterPressTimer);
+        counterPressTimer = setTimeout(() => {
+          counterLongPressFired = true;
+          toggleArrowMode();
+        }, LONG_PRESS_MS);
+      }
+      function cancelCounterPress() {
+        clearTimeout(counterPressTimer);
+      }
+      function endCounterPress() {
+        clearTimeout(counterPressTimer);
+        if (!counterLongPressFired) {
+          openNumpad();
+        }
+      }
+      counterWrapEl.addEventListener("touchstart", startCounterPress, { passive: true });
+      counterWrapEl.addEventListener("touchend", endCounterPress, { passive: true });
+      counterWrapEl.addEventListener("touchcancel", cancelCounterPress, { passive: true });
+      counterWrapEl.addEventListener("mousedown", () => { if (!isTouchDevice) startCounterPress(); });
+      counterWrapEl.addEventListener("mouseup",   () => { if (!isTouchDevice) endCounterPress(); });
+      counterWrapEl.addEventListener("mouseleave", () => { if (!isTouchDevice) cancelCounterPress(); });
+
       // ── スタンプ配置・削除（タップ共通入口） ─────────────────────────────
       function placeTapStamp(clientX, clientY) {
         const rect = canvasWrap.getBoundingClientRect();
@@ -1464,9 +1875,30 @@ self.addEventListener('fetch', function(e) {
           return;
         }
 
+        // 矢印モード（13.5参照）：方向決定タップ（2回目のタップ）待ちの場合は、
+        // このタップを新規スタンプ配置ではなく方向決定として扱う。
+        // 待機中のスタンプは同じページにいる場合のみ有効（ページ切替時は
+        // cancelPendingArrow()で既にクリアされているため、通常はこの
+        // pageNum比較は保険的な二重チェックになる）。
+        // 【ver1.15】8方向へのスナップは廃止し、タップした角度をそのまま使う。
+        if (pendingArrowStamp && pendingArrowPageNum === currentPage) {
+          const dx    = pdfX - pendingArrowStamp.x;
+          const dy    = pdfY - pendingArrowStamp.y;
+          const angle = computeTapAngleDeg(dx, dy);
+          pendingArrowStamp.hasArrow   = true;
+          pendingArrowStamp.arrowAngle = angle;
+          pendingArrowStamp  = null;
+          pendingArrowPageNum = null;
+          clearArrowGuide();
+          arrowWaitBannerEl.classList.remove("show");
+          markDataChanged();
+          refreshStampDots(currentPage);
+          return;
+        }
+
         const pdfSize = parseInt(stampSizeEl.value);
         const num     = colorCounters[currentColor];
-        const stamp   = { id: genStampId(), x: pdfX, y: pdfY, num, color: currentColor, pdfSize };
+        const stamp   = { id: genStampId(), x: pdfX, y: pdfY, num, color: currentColor, pdfSize, hasArrow: false, arrowAngle: null };
         if (!stamps[currentPage]) stamps[currentPage] = [];
         stamps[currentPage].push(stamp);
         stampHistory.push({ action: "place", pageNum: currentPage, stamp });
@@ -1475,6 +1907,19 @@ self.addEventListener('fetch', function(e) {
         colorCounters[currentColor] = num >= 999 ? 1 : num + 1;
         updateCounterUI();
         updateUndoBtn();
+
+        // 矢印モードON中は、置いたばかりのこのスタンプを「方向決定待ち」にし、
+        // 8方向の薄いガイド矢印（角度のスナップとは無関係の、待機状態を示す
+        // 視覚的な目印）と点滅する待機リングを表示する。次のタップ（deleteMode/
+        // ページ切替/色選択等の他操作がない限り）が方向決定タップとして扱われ、
+        // タップした角度がそのまま（8方向へのスナップなしで）矢印の向きになる
+        // （このplaceTapStamp関数の冒頭のpendingArrowStamp分岐を参照）。
+        if (arrowMode) {
+          pendingArrowStamp   = stamp;
+          pendingArrowPageNum = currentPage;
+          showArrowGuide(stamp);
+          arrowWaitBannerEl.classList.add("show");
+        }
       }
 
       // タップ位置（PDF座標系）に最も近いスタンプを1つ削除する。
@@ -1503,6 +1948,7 @@ self.addEventListener('fetch', function(e) {
 
       // 削除モードのON/OFF切替
       function toggleDeleteMode() {
+        cancelPendingArrow();
         deleteMode = !deleteMode;
         deleteModeBtnEl.classList.toggle("danger-active", deleteMode);
         deleteModeBannerEl.classList.toggle("show", deleteMode);
@@ -1510,7 +1956,11 @@ self.addEventListener('fetch', function(e) {
       }
 
       function refreshStampDots(pageNum) {
-        document.querySelectorAll(".stamp-dot").forEach(d => d.remove());
+        // .stamp-dot/.stamp-arrowは常にaddDotDOM()経由で#canvas-wrapの子要素として
+        // 追加されるため、documentツリー全体ではなくcanvasWrap配下だけを探索すれば
+        // 十分（ver1.13で最適化。ページ送り・スタンプ配置・削除・Undoのたびに
+        // 呼ばれる高頻度関数のため、探索範囲を絞る効果がある）。
+        canvasWrap.querySelectorAll(".stamp-dot, .stamp-arrow").forEach(d => d.remove());
         (stamps[pageNum] || []).forEach(s => addDotDOM(s));
       }
 
@@ -1545,6 +1995,17 @@ self.addEventListener('fetch', function(e) {
         span.textContent = label;
         dot.appendChild(span);
         wrap.appendChild(dot);
+
+        // 矢印付きスタンプ（ver1.12〜、ver1.15で自由角度に変更）：円の外側に、
+        // 円と同じ色の矢印を描画する。矢印の向きはs.arrowAngle（度数、東=0、
+        // 時計回り）で、方向決定タップ（placeTapStamp内）でタップした角度が
+        // そのまま入る（8方向へのスナップは行わない）。
+        if (s.hasArrow && typeof s.arrowAngle === "number") {
+          const arrowLen    = sz * 0.85;
+          const arrowStrokeW = Math.max(1.2, sz * 0.09);
+          const arrowSvg = createArrowSvgEl(cx, cy, sz / 2, s.arrowAngle, arrowLen, s.color, arrowStrokeW, "stamp-arrow");
+          wrap.appendChild(arrowSvg);
+        }
       }
 
       // ── Undo ──────────────────────────────────────────────────────────────
@@ -1553,6 +2014,7 @@ self.addEventListener('fetch', function(e) {
       // action: "place"  → 配置を取り消す（リストから削除し、番号カウンターを戻す）
       // action: "delete" → 削除を取り消す（リストに復元する。カウンターは変更しない）
       function undoLast() {
+        cancelPendingArrow();
         if (stampHistory.length === 0) return;
         const entry = stampHistory.pop();
         const { action, pageNum, stamp } = entry;
@@ -1608,8 +2070,10 @@ self.addEventListener('fetch', function(e) {
         const data = pendingRestoreData;
         pendingRestoreData = null;
         restoreOverlayEl.classList.remove("open");
+        cancelPendingArrow();
 
         stamps       = data.stamps || {};
+        normalizeAllStampsArrowFields(stamps);
         stampHistory = data.stampHistory || [];
         recalcNextStampId();
         Object.assign(colorCounters, data.colorCounters || {});
@@ -1633,6 +2097,14 @@ self.addEventListener('fetch', function(e) {
       }
 
       // ── スタンプサイズ変更 ────────────────────────────────────────────────
+      // スライダー（#stamp-size）のoninputから呼ばれる。以前はHTML属性内に
+      // document.getElementById('size-val')を直書きしていたが、「5.1 DOM要素・
+      // カラースウォッチのキャッシュ方針」の通り、静的要素は必ずキャッシュ済み
+      // 変数（sizeValEl）を使う方針に統一した（ver1.13で修正）。
+      function onStampSizeInput(value) {
+        sizeValEl.textContent = value;
+      }
+
       function changeStampSize(delta) {
         const slider = stampSizeEl;
         const min = parseInt(slider.min), max = parseInt(slider.max);
@@ -1646,6 +2118,10 @@ self.addEventListener('fetch', function(e) {
         const next = currentPage + delta;
         if (next < 1 || next > totalPages) return;
         currentPage = next;
+        // 矢印の方向決定タップ待ち中にページを切り替えると、待機中のスタンプが
+        // 別ページに取り残されて混乱するため、ページ送り時は必ず待機をキャンセルし、
+        // 矢印なしの丸数字スタンプとして確定させる。
+        cancelPendingArrow();
         // ページをまたいだまま削除モードのつもりで誤って新規スタンプを消す
         // 事故を防ぐため、ページ送り時は削除モードを自動でOFFにする。
         if (deleteMode) toggleDeleteMode();
@@ -1670,10 +2146,21 @@ self.addEventListener('fetch', function(e) {
         return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
       }
 
+      // 保存ファイル名のベース部分（日時サフィックスを除いた部分）を決める。
+      // 案件名（#project-name-input、localStorageで永続化・ver1.11〜）が
+      // 入力されていればそれを最優先で使い、未入力の場合のみ従来通り
+      // 元のPDFファイル名（単一PDF）または結合PDFの自動生成名
+      // （「結合PDF_N件」）にフォールバックする。
+      function saveFilenameBase() {
+        const trimmed = (projectName || "").trim();
+        return trimmed ? sanitizeForFilename(trimmed) : originalFileName;
+      }
+
       function openSaveDialog() {
         if (!originalPdfBytes) return;
+        cancelPendingArrow();
         const ts = formatTimestampForFilename(new Date());
-        filenameInputEl.value = `${originalFileName}_${ts}`;
+        filenameInputEl.value = `${saveFilenameBase()}_${ts}`;
         filenameOverlayEl.classList.add("open");
         setTimeout(() => {
           const inp = filenameInputEl;
@@ -1691,10 +2178,27 @@ self.addEventListener('fetch', function(e) {
 
       async function executeFileSave() {
         let fname = filenameInputEl.value.trim()
-                    || `${originalFileName}_${formatTimestampForFilename(new Date())}`;
+                    || `${saveFilenameBase()}_${formatTimestampForFilename(new Date())}`;
         if (!/\.pdf$/i.test(fname)) fname += ".pdf";
         closeFilenameDialog();
         await savePDF(fname);
+      }
+
+      // PDFページに/Rotate（90/180/270度）が設定されている場合の座標変換ヘルパー。
+      // 「見た目座標系」（pdf.js基準、左上原点・Y軸反転済み＝pdf-libのY-up空間内で
+      // 見た目通りに配置した座標）の点(vx, vy)を、pdf-libが実際に描画に使う
+      // 「回転前の生PDF座標系」に変換する。savePDF()内でスタンプ中心・矢印の
+      // 各点（始点・先端・矢じり2点）のすべてに対して同じ変換を使うことで、
+      // 回転付きページでも画面表示と一致する向き・位置で描画できる。
+      // 元々はsavePDF()内にswitch文としてインライン展開されていたが、矢印の
+      // 複数の点にも同じ変換が必要になったため関数として切り出した（ver1.12）。
+      function rotateViewportPointToRawPDF(vx, vy, rotation, rawW, rawH) {
+        switch (rotation) {
+          case 90:  return { x: vy,        y: rawH - vx };
+          case 180: return { x: rawW - vx, y: rawH - vy };
+          case 270: return { x: rawW - vy, y: vx };
+          default:  return { x: vx,        y: vy };
+        }
       }
 
       async function savePDF(filename) {
@@ -1734,24 +2238,7 @@ self.addEventListener('fetch', function(e) {
               const vy = pH - s.y * scaleY;
 
               // 回転角度に応じて、見た目座標系から「回転前の生PDF座標系」に変換する
-              let cx, cy;
-              switch (rotation) {
-                case 90:
-                  cx = vy;
-                  cy = rawH - vx;
-                  break;
-                case 180:
-                  cx = rawW - vx;
-                  cy = rawH - vy;
-                  break;
-                case 270:
-                  cx = rawW - vy;
-                  cy = vx;
-                  break;
-                default: // 0度（回転なし。従来通りの計算）
-                  cx = vx;
-                  cy = vy;
-              }
+              const { x: cx, y: cy } = rotateViewportPointToRawPDF(vx, vy, rotation, rawW, rawH);
 
               const r           = (s.pdfSize / 2) * ((scaleX + scaleY) / 2);
               const [rr, gg, bb] = hexToRgb01(s.color);
@@ -1777,6 +2264,49 @@ self.addEventListener('fetch', function(e) {
                 x: cx - tw / 2, y: cy - th / 2,
                 size: fSize, font, color: strokeColor, opacity: 1,
               });
+
+              // 矢印付きスタンプ（ver1.12〜、ver1.15で自由角度に変更）：円と同じ色・
+              // 線分3本（軸＋矢じり2本）で矢印を描く。画面表示（addDotDOM/
+              // createArrowSvgEl）と同じ考え方のベクトル計算を、pdf-libのdrawLineで
+              // 再現している。方向はs.arrowAngle（度数、画面・CSS座標系＝Y軸下向き
+              // 基準、東=0・時計回り）で定義されているため、まず「見た目座標系」の
+              // 2点（矢印の始点・終点）に変換してから、円の中心と同じ
+              // rotateViewportPointToRawPDF()で生PDF座標系へ変換する（回転付き
+              // ページでも矢印の向きが画面表示と一致するようにするため）。
+              if (s.hasArrow && typeof s.arrowAngle === "number") {
+                const arad = s.arrowAngle * Math.PI / 180;
+                const dv = { x: Math.cos(arad), y: Math.sin(arad) };
+                // 見た目座標系（Y軸下向き）でのスタンプ中心
+                const cvx = vx, cvy = vy;
+                // s.x/s.y方向のdx,dyをスケール変換したうえで、見た目座標系のY軸反転
+                // （vy = pH - s.y*scaleY）に合わせてY成分の符号を反転する。
+                const dxScaled = dv.x * scaleX;
+                const dyScaled = -dv.y * scaleY;
+                const mag = Math.hypot(dxScaled, dyScaled) || 1;
+                const uX = dxScaled / mag, uY = dyScaled / mag;
+
+                const headLen = r * 0.85;
+                const shaftLen = r * 1.55; // 円の中心から矢印先端までの距離
+                const startVx = cvx + uX * r,        startVy = cvy + uY * r;
+                const tipVx   = cvx + uX * shaftLen, tipVy   = cvy + uY * shaftLen;
+                const revX = -uX, revY = -uY;
+                // ver1.13：ベクトル回転の計算はbuildArrowMarkup()と共通の
+                // rotateVectorDeg()に統一した（以前はここにほぼ同じ内容の
+                // ローカル関数rot2()が個別に存在していた）。
+                const h1 = rotateVectorDeg(revX, revY, 28);
+                const h2 = rotateVectorDeg(revX, revY, -28);
+                const h1Vx = tipVx + h1.x * headLen, h1Vy = tipVy + h1.y * headLen;
+                const h2Vx = tipVx + h2.x * headLen, h2Vy = tipVy + h2.y * headLen;
+
+                const startP = rotateViewportPointToRawPDF(startVx, startVy, rotation, rawW, rawH);
+                const tipP   = rotateViewportPointToRawPDF(tipVx, tipVy, rotation, rawW, rawH);
+                const h1P    = rotateViewportPointToRawPDF(h1Vx, h1Vy, rotation, rawW, rawH);
+                const h2P    = rotateViewportPointToRawPDF(h2Vx, h2Vy, rotation, rawW, rawH);
+                const lineThickness = Math.max(0.6, r * 0.16);
+                pdfPage.drawLine({ start: startP, end: tipP, thickness: lineThickness, color: strokeColor, opacity: 1 });
+                pdfPage.drawLine({ start: tipP, end: h1P, thickness: lineThickness, color: strokeColor, opacity: 1 });
+                pdfPage.drawLine({ start: tipP, end: h2P, thickness: lineThickness, color: strokeColor, opacity: 1 });
+              }
             }
           }
 
@@ -1864,6 +2394,7 @@ self.addEventListener('fetch', function(e) {
         return document.fullscreenElement || document.webkitFullscreenElement || null;
       }
       function toggleFullscreen() {
+        cancelPendingArrow();
         if (!getFullscreenElement()) {
           const el = document.documentElement;
           const req = el.requestFullscreen || el.webkitRequestFullscreen;
@@ -1913,6 +2444,16 @@ self.addEventListener('fetch', function(e) {
       window.addEventListener("resize", () => {
         clearTimeout(resizeDebounceTimer);
         resizeDebounceTimer = setTimeout(() => {
+          // 【ver1.13で発見・修正】矢印の方向決定タップ待ち中にリサイズ・画面回転が
+          // 起きると、renderPage(currentPage, true)でbaseScale/zoomScale/panX/panYが
+          // 作り直されるにもかかわらず、待機中のガイド（.arrow-guide/.arrow-wait-ring）は
+          // 古いbaseScale基準のCSS座標のまま#canvas-wrapに残り続け、実際のスタンプ位置と
+          // ズレた場所に表示されてしまっていた（方向決定タップ自体は現在のbaseScaleで
+          // 都度計算し直すため機能的には壊れないが、見た目のガイドが誤った位置を示す
+          // ため紛らわしい）。画面回転・リサイズ時は常にフィット表示へリセットする
+          // という既存方針（「8. 既知の設計上の判断」参照）に合わせ、待機自体をキャンセル
+          // して矢印なしのスタンプとして確定させることで解消した。
+          cancelPendingArrow();
           updateCounterUI();
           if (pdfDoc) renderPage(currentPage, true);
         }, 200);
