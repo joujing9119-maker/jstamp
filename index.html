@@ -56,6 +56,14 @@
            ボタンと同じ60pxを直径にすることで、同じ列内できれいに揃って収まるようにする。 */
         --swatch-d: var(--nav-btn-w);
         --bottom-h: clamp(60px, 8.5vh, 96px);
+        /* フリーペンモード中は下ツールバーが2段（既存コントロール＋ペン用
+           コントロール）になり高さが増える。この増減をcanvas-area・toolbar-right・
+           toolbar-bottom・toolbar-corner・両FABボタンすべてで一貫させるため、
+           実際のレイアウト計算には--bottom-hではなく--bottom-h-currentを使う
+           （togglePenMode()がJSでこの値を書き換える。ver1.20〜）。
+           --bottom-h自体は行の内部サイズ（ボタン直径・文字サイズ等）の基準として
+           そのまま使い続けるため変更しない。 */
+        --bottom-h-current: var(--bottom-h);
         /* ボタン内のアイコン・ラベル文字サイズは、Jtableの実コード
            `.side-tool-btn .side-btn-icon`（26px）/`.side-btn-label`（13px）に
            合わせた固定値（ver1.06で修正。それ以前は`.nav-btn`側の値
@@ -78,7 +86,7 @@
         position: absolute;
         top: 0; left: 0;
         right: calc(var(--app-pad) + var(--right-w) + var(--col-gap));
-        bottom: var(--bottom-h);
+        bottom: var(--bottom-h-current);
         overflow: hidden;
         background: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
                     linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
@@ -136,7 +144,7 @@
       }
       .btn-open-big:active { transform: scale(0.96); }
       #toolbar-right {
-        position: fixed; right: var(--app-pad); top: var(--app-pad); bottom: var(--bottom-h); width: var(--right-w);
+        position: fixed; right: var(--app-pad); top: var(--app-pad); bottom: var(--bottom-h-current); width: var(--right-w);
         background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
         -webkit-backdrop-filter: var(--toolbar-blur);
         display: flex; flex-direction: column; align-items: center;
@@ -156,19 +164,36 @@
       }
       #toolbar-right::-webkit-scrollbar { display: none; } /* Chrome/Safari */
       #toolbar-bottom {
-        position: fixed; left: 0; right: calc(var(--app-pad) + var(--right-w)); bottom: 0; height: var(--bottom-h);
+        position: fixed; left: 0; right: calc(var(--app-pad) + var(--right-w)); bottom: 0;
+        height: var(--bottom-h-current);
         background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
         -webkit-backdrop-filter: var(--toolbar-blur);
-        display: flex; align-items: center; padding: 0 10px 0 14px; gap: 8px;
+        display: flex; flex-direction: column;
         z-index: 100; border-top: 1px solid rgba(255,255,255,0.08);
+        transition: height 0.15s ease;
       }
+      /* 下ツールバーは通常1段（#toolbar-bottom-row1のみ）だが、フリーペンモード中は
+         #toolbar-bottom-row2（ペン用の色パレット・太さスライダー）も表示され、
+         2段になる（ver1.20〜）。各行の高さは--bottom-h（1段分の基準高さ）で
+         揃えており、2段合計で--bottom-h-current（=--bottom-h*2）と一致する。 */
+      #toolbar-bottom-row1 {
+        display: flex; align-items: center; height: var(--bottom-h);
+        padding: 0 10px 0 14px; gap: 8px; flex-shrink: 0;
+      }
+      #toolbar-bottom-row2 {
+        display: none; align-items: center; height: var(--bottom-h);
+        padding: 0 10px 0 14px; gap: 8px; flex-shrink: 0;
+        border-top: 1px solid rgba(255,255,255,0.08);
+      }
+      #toolbar-bottom.pen-active #toolbar-bottom-row2 { display: flex; }
       #toolbar-corner {
-        position: fixed; right: var(--app-pad); bottom: 0; width: var(--right-w); height: var(--bottom-h);
+        position: fixed; right: var(--app-pad); bottom: 0; width: var(--right-w); height: var(--bottom-h-current);
         background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
         -webkit-backdrop-filter: var(--toolbar-blur); z-index: 101;
         border-left: 1px solid rgba(255,255,255,0.08);
         border-top: 1px solid rgba(255,255,255,0.08);
         display: flex; align-items: center; justify-content: center;
+        transition: height 0.15s ease;
       }
       .tb-label {
         font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
@@ -233,16 +258,20 @@
          以前はbottom:16pxで画面左下に固定していたが、下ツールバー（#toolbar-bottom、
          高さ--bottom-h=88px）と重なって見えてしまっていたため、下ツールバーの
          「上」＝canvas-area内の左下に来るよう bottom: calc(var(--bottom-h) + 16px) に変更。
+         ver1.20〜：フリーペンモード中は下ツールバーが2段になり高さが増えるため、
+         --bottom-hではなく--bottom-h-current基準にして、常に下ツールバーの
+         直上に来るようにしている。
          z-indexは右ツールバー・下ツールバー(100/101)より高いままにしてあるので、
          canvas-areaの内容（PDF・スタンプ）の上には重なって見える。
          保存ダイアログ等のモーダル(200以上)よりは低いので、モーダル表示中は隠れて操作の邪魔にならない。 */
       .app-switch-fab {
-        position: fixed; left: 16px; bottom: calc(var(--bottom-h) + 16px); z-index: 110;
+        position: fixed; left: 16px; bottom: calc(var(--bottom-h-current) + 16px); z-index: 110;
         width: 52px; height: 52px; border-radius: 50%;
         background: linear-gradient(135deg, #8a63f2 0%, #5b3df0 100%);
         color: #fff; display: flex; align-items: center; justify-content: center;
         font-size: 24px; text-decoration: none;
         box-shadow: 0 4px 15px rgba(91,61,240,0.4);
+        transition: bottom 0.15s ease;
       }
       .app-switch-fab:active { transform: scale(0.92); }
       /* 全画面表示切り替えボタン。切り替えボタン（.app-switch-fab）のすぐ右隣に
@@ -253,12 +282,12 @@
          よって差があるため、非対応の場合はtoggleFullscreen()内でトーストを出して
          フォールバックする（詳細はJS側のコメント参照）。 */
       .fullscreen-fab {
-        position: fixed; left: 76px; bottom: calc(var(--bottom-h) + 16px); z-index: 110;
+        position: fixed; left: 76px; bottom: calc(var(--bottom-h-current) + 16px); z-index: 110;
         width: 52px; height: 52px; border-radius: 50%;
         background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.18);
         color: #fff; display: flex; align-items: center; justify-content: center;
         font-size: 22px; cursor: pointer; -webkit-tap-highlight-color: transparent;
-        transition: background 0.12s, transform 0.1s;
+        transition: background 0.12s, transform 0.1s, bottom 0.15s ease;
         box-shadow: 0 4px 15px rgba(0,0,0,0.3);
       }
       .fullscreen-fab:active { transform: scale(0.92); background: rgba(255,255,255,0.22); }
@@ -411,30 +440,33 @@
         color: rgba(255,255,255,0.28); pointer-events: none;
         z-index: 150; user-select: none;
       }
-      #delete-mode-banner {
-        position: absolute; top: 0; left: 0; right: 0;
-        background: var(--accent); color: #fff;
-        font-size: 14px; font-weight: 700; letter-spacing: 0.05em;
-        text-align: center; padding: 8px 0; z-index: 60;
-        display: none; pointer-events: none;
-        box-shadow: 0 2px 12px rgba(192,57,43,0.6);
+      /* ver1.20〜：削除モード・矢印待機・フリーペンモードの各バナーは、
+         #mode-bannersという共通のflex-columnラッパーの子要素にして、複数の
+         バナーが同時に「show」になった場合でも重ならず縦に並ぶようにしている。
+         以前は各バナー個別にposition:absolute; top:0;を指定しており、削除モードと
+         矢印待機は排他だったため重なりは実害がなかったが、ver1.20でフリーペン
+         モードが削除モード・矢印モードと共存可能になったため、同時表示に対応する
+         必要が生じてこの構造に変更した。 */
+      #mode-banners {
+        position: absolute; top: 0; left: 0; right: 0; z-index: 60;
+        display: flex; flex-direction: column; pointer-events: none;
       }
-      #delete-mode-banner.show { display: block; }
+      .mode-banner {
+        color: #fff; font-size: 14px; font-weight: 700; letter-spacing: 0.05em;
+        text-align: center; padding: 8px 0; display: none;
+      }
+      .mode-banner.show { display: block; }
+      #delete-mode-banner { background: var(--accent); box-shadow: 0 2px 12px rgba(192,57,43,0.6); }
       /* 矢印の方向決定タップ待ちであることを示すバナー（ver1.12〜）。
-         delete-mode-bannerと同じ位置（canvas-area上端）に重ねて表示するが、
          矢印モードの待機中は必ずcancelPendingArrow()経由でdeleteMode切替時にも
-         解除されるため、両バナーが同時に表示されることはない設計になっている。
+         解除されるため、削除モードバナーとは同時表示されない設計になっている。
          色は削除（赤系）と混同しないよう、切り替えボタン（.app-switch-fab）と
          同系統の紫にしている。 */
-      #arrow-wait-banner {
-        position: absolute; top: 0; left: 0; right: 0;
-        background: #5b3df0; color: #fff;
-        font-size: 14px; font-weight: 700; letter-spacing: 0.05em;
-        text-align: center; padding: 8px 0; z-index: 60;
-        display: none; pointer-events: none;
-        box-shadow: 0 2px 12px rgba(91,61,240,0.6);
-      }
-      #arrow-wait-banner.show { display: block; }
+      #arrow-wait-banner { background: #5b3df0; box-shadow: 0 2px 12px rgba(91,61,240,0.6); }
+      /* フリーペンモード中であることを示すバナー（ver1.20〜）。削除モード・
+         矢印モードとは共存可能な設計のため、他のバナーと同時に表示されうる
+         （#mode-bannersのflex-columnで縦に並ぶ）。色は他の2つと被らない緑系。 */
+      #pen-mode-banner { background: #16a085; box-shadow: 0 2px 12px rgba(22,160,133,0.6); }
       /* 矢印付きスタンプの矢印本体・待機中の8方向ガイド・待機中リングは、
          いずれもSVG/div（.stamp-arrow / .arrow-guide / .arrow-wait-ring）として
          JS側（createArrowSvgEl・showArrowGuide）が動的に生成し#canvas-wrapへ
@@ -457,6 +489,34 @@
       }
       .tb-icon-btn.danger-active { background: var(--accent); color: #fff; }
       .tb-icon-btn.danger-active:active { background: var(--accent2); }
+      /* ── フリーペンモード（ver1.20〜） ──────────────────────────────────── */
+      /* 右ツールバーのトグルボタン。カラースウォッチとカウンターサークルの間に
+         配置する（ユーザー指定の位置）。ONの間は.pen-activeで塗りつぶし表示にし、
+         削除モードボタンの塗りつぶし（.danger-active）と紛れないよう緑系にする。 */
+      .tb-icon-btn.pen-active { background: #16a085; color: #fff; }
+      .tb-icon-btn.pen-active:active { background: #138a71; }
+      /* 下ツールバー2段目：ペン用の色パレット（6色スウォッチ）＋太さスライダー。
+         右ツールバーの色スウォッチ（--swatch-d=60px）と違い、下ツールバーは
+         高さ--bottom-h基準の横並びのため、スウォッチは正方形の--pg-btn-dに
+         揃えた円形にしている。 */
+      #pen-palette-wrap { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+      .pen-swatch {
+        width: calc(var(--pg-btn-d) * 0.62); height: calc(var(--pg-btn-d) * 0.62);
+        border-radius: 50%; cursor: pointer; flex-shrink: 0;
+        border: calc(var(--pg-btn-d) * 0.62 * 0.1) solid transparent;
+        transition: border-color 0.14s, box-shadow 0.14s;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .pen-swatch.active { border-color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.5); }
+      /* 黒スウォッチは背景が暗いツールバーに埋もれやすいので、非選択時も
+         薄いグレーの枠を常時付けて視認性を確保する。 */
+      .pen-swatch[data-color="#000000"] { border-color: rgba(255,255,255,0.35); }
+      .pen-swatch[data-color="#000000"].active { border-color: #fff; }
+      /* 確定済みの線（.pen-line）・描画中のライブプレビュー（.pen-line-live）は、
+         いずれもSVG polylineとしてJS側（addLineDOM/継続描画処理）が動的に生成し
+         #canvas-wrapへ子要素として追加する（矢印・スタンプと同じ座標系に乗せる
+         ことで、パン・ズームのtransformに自動追従させるため）。 */
+      .pen-line, .pen-line-live { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
     </style>
   </head>
   <body>
@@ -468,8 +528,11 @@
                  oninput="onProjectNameInput(this.value)"
                  onkeydown="if(event.key==='Enter') this.blur()" />
         </div>
-        <div id="delete-mode-banner">🗑 削除モード中：スタンプをタップして削除</div>
-        <div id="arrow-wait-banner">➤ タップして矢印の方向を決めてください（削除ボタンでキャンセル）</div>
+        <div id="mode-banners">
+          <div id="delete-mode-banner" class="mode-banner">🗑 削除モード中：スタンプをタップして削除</div>
+          <div id="arrow-wait-banner" class="mode-banner">➤ タップして矢印の方向を決めてください（削除ボタンでキャンセル）</div>
+          <div id="pen-mode-banner" class="mode-banner">✏️ フリーペンモード中：ドラッグして線を描画（拡大率・表示位置は固定）</div>
+        </div>
         <div id="drop-zone">
           <div class="dz-icon">📄</div>
           <h2>PDFファイルを選択してください</h2>
@@ -492,6 +555,10 @@
           </div>
           <div id="counter-label">番号</div>
         </div>
+        <div class="tb-divider"></div>
+        <button class="tb-icon-btn" id="pen-mode-btn" onclick="togglePenMode()" title="フリーペンモード切替">
+          <span class="ib-icon">✏️</span><span class="ib-txt">ペン</span>
+        </button>
         <div class="tb-divider"></div>
         <div class="tb-label">色</div>
         <div id="palette-wrap"></div>
@@ -521,18 +588,29 @@
       </div>
 
       <div id="toolbar-bottom">
-        <button class="pg-btn" id="prev-btn" disabled onclick="changePage(-1)">◀</button>
-        <div id="page-info-txt">— / —</div>
-        <button class="pg-btn" id="next-btn" disabled onclick="changePage(1)">▶</button>
-        <div class="tb-vdivider"></div>
-        <div class="slider-group">
-          <label>大きさ</label>
-          <input type="range" id="stamp-size" min="10" max="40" value="20" step="1" oninput="onStampSizeInput(this.value)" />
-          <span class="slider-val" id="size-val">20</span>
+        <div id="toolbar-bottom-row1">
+          <button class="pg-btn" id="prev-btn" disabled onclick="changePage(-1)">◀</button>
+          <div id="page-info-txt">— / —</div>
+          <button class="pg-btn" id="next-btn" disabled onclick="changePage(1)">▶</button>
+          <div class="tb-vdivider"></div>
+          <div class="slider-group">
+            <label>大きさ</label>
+            <input type="range" id="stamp-size" min="10" max="40" value="20" step="1" oninput="onStampSizeInput(this.value)" />
+            <span class="slider-val" id="size-val">20</span>
+          </div>
+          <div class="tb-vdivider"></div>
+          <button class="pg-btn" onclick="changeStampSize(-1)" title="スタンプ縮小">－</button>
+          <button class="pg-btn" onclick="changeStampSize(1)" title="スタンプ拡大">＋</button>
         </div>
-        <div class="tb-vdivider"></div>
-        <button class="pg-btn" onclick="changeStampSize(-1)" title="スタンプ縮小">－</button>
-        <button class="pg-btn" onclick="changeStampSize(1)" title="スタンプ拡大">＋</button>
+        <div id="toolbar-bottom-row2">
+          <div id="pen-palette-wrap"></div>
+          <div class="tb-vdivider"></div>
+          <div class="slider-group">
+            <label>太さ</label>
+            <input type="range" id="pen-width" min="1" max="20" value="4" step="1" oninput="onPenWidthInput(this.value)" />
+            <span class="slider-val" id="pen-width-val">4</span>
+          </div>
+        </div>
       </div>
 
       <div id="toolbar-corner">
@@ -540,7 +618,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.18</div>
+    <div id="version-badge">ver1.21</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -594,6 +672,17 @@
          詳細は「4.1 PDF操作」「9. PDF読み込み」を参照。 -->
     <input type="file" id="file-input" accept="application/pdf" multiple onchange="loadPDF(this)" />
 
+    <!-- ver1.21〜：この2つのFABボタンは、以前は</script>より後（body末尾）に
+         配置されていた。この2要素はposition:fixedのためDOM上の位置は見た目に
+         影響しないが、script内で#fullscreen-fab-btnをdocument.getElementById()
+         によりキャッシュ（fullscreenBtnEl）しているため、script実行時点（HTML
+         パース中に同期的に実行される）でこのボタン要素がまだDOMに存在せず、
+         fullscreenBtnElが常にnullになってしまう不具合があった。static要素は
+         参照より前にDOM上へ存在している必要があるため、scriptタグより前へ
+         移動して修正した（詳細は「5.1 DOM要素・カラースウォッチのキャッシュ方針」「9. 変更履歴」ver1.21を参照）。 -->
+    <a class="app-switch-fab" href="https://joujing9119-maker.github.io/jtable/" title="Jtableに切り替え" onclick="handleAppSwitch(event)">📋</a>
+    <button class="fullscreen-fab" id="fullscreen-fab-btn" onclick="toggleFullscreen()" title="全画面表示に切り替え">⛶</button>
+
     <script>
       // 新しいService Workerへの切替が保留中かどうか（作業中は安全のためリロードを待つ）
       let pendingReload = false;
@@ -601,7 +690,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.18";
+        const CACHE_NAME = "jstamp-v1.21";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -714,13 +803,28 @@ self.addEventListener('fetch', function(e) {
       //   x, y     : PDF座標系（scale:1 viewport内ピクセル位置）
       //   pdfSize  : スタンプ直径（PDF座標系ピクセル数）
       let stamps           = {};
+      // フリーペンモード（ver1.20〜）で描いた線を保持する。stampsと同じく
+      // ページ番号をキーにした配列。1件のエントリ＝1本の連続したストローク：
+      // { id, points: [{x, y}, ...], color, width }
+      //   id     : スタンプと同じgenStampId()で採番する一意な識別子（Undo・削除の
+      //            対象特定に使う。stamps側とlines側でIDの値域は共有しているが、
+      //            別々の配列に入るため衝突しても問題ない）
+      //   points : PDF座標系（scale:1）での通過点の配列。1点目がストローク開始位置
+      //   color  : 線の色（#rrggbb、ペン用パレットで選択した色）
+      //   width  : 線の太さ（PDF座標系での値。スタンプのpdfSizeと同じ考え方で、
+      //            画面表示・PDF出力それぞれでbaseScale・出力スケールを掛けて使う）
+      let lines             = {};
       // ページを横断して「最後に押したスタンプ」を取り消せるよう、
       // 押した順に { pageNum, stamp } を記録する履歴スタック。
+      // ver1.20〜：フリーペンモードの線もスタンプと完全に同じ扱いでこの履歴に
+      // 積む（{ type: "line", action: "place"/"delete", pageNum, line }）。
+      // typeを省略した古い形式のエントリ（ver1.19以前に作られたスタンプの履歴）は
+      // undoLast()側で"stamp"として扱う後方互換フォールバックがある。
       // stampHistory[i].stamp は、配置時にはstamps[pageNum]内の同じオブジェクトへの
       // 参照そのものだが、localStorageのJSON化やIndexedDBへの保存・復元を経由すると、
       // 参照の同一性が保たれない場合がある（後述のid採番はこれに対する対策）。
       let stampHistory      = [];
-      // 各スタンプに付与する一意なID（配置順に単調増加）。
+      // 各スタンプ・各線に付与する一意なID（配置順に単調増加、stamps/linesで共有）。
       // undoLast()で「配置(place)」を取り消す際、以前はstampHistory側の
       // stampオブジェクトをstamps[pageNum]配列からJSの参照の同一性（indexOf）で
       // 探して削除していたが、バックアップ復元（localStorageのJSON.parse、または
@@ -733,13 +837,18 @@ self.addEventListener('fetch', function(e) {
       let nextStampId        = 1;
       function genStampId() { return nextStampId++; }
       // 復元処理（自動バックアップ復元・アプリ切り替えハンドオフ復元）の後は、
-      // 新しく配置するスタンプのIDが復元データ内の既存IDと衝突しないよう、
-      // 復元済みデータ内の最大ID+1へnextStampIdを進めておく。
+      // 新しく配置するスタンプ・線のIDが復元データ内の既存IDと衝突しないよう、
+      // 復元済みデータ内（stamps・lines両方）の最大ID+1へnextStampIdを進めておく。
       function recalcNextStampId() {
         let maxId = 0;
         Object.values(stamps).forEach(list => {
           (list || []).forEach(s => {
             if (typeof s.id === "number" && s.id > maxId) maxId = s.id;
+          });
+        });
+        Object.values(lines).forEach(list => {
+          (list || []).forEach(l => {
+            if (typeof l.id === "number" && l.id > maxId) maxId = l.id;
           });
         });
         nextStampId = maxId + 1;
@@ -790,6 +899,11 @@ self.addEventListener('fetch', function(e) {
       const toastEl          = document.getElementById("toast");
       const fullscreenBtnEl  = document.getElementById("fullscreen-fab-btn");
       const projectNameInputEl = document.getElementById("project-name-input");
+      const penModeBtnEl     = document.getElementById("pen-mode-btn");
+      const penModeBannerEl  = document.getElementById("pen-mode-banner");
+      const toolbarBottomEl  = document.getElementById("toolbar-bottom");
+      const penPaletteWrapEl = document.getElementById("pen-palette-wrap");
+      const penWidthValEl    = document.getElementById("pen-width-val");
 
       // 色ごとのカウンター（キー: color文字列, 値: 次に置く番号 1〜999）
       const colorCounters = Object.fromEntries(PALETTE.map(p => [p.color, 1]));
@@ -809,6 +923,7 @@ self.addEventListener('fetch', function(e) {
             totalPages,
             currentPage,
             stamps,
+            lines,
             stampHistory,
             colorCounters,
             savedAt: Date.now(),
@@ -951,7 +1066,7 @@ self.addEventListener('fetch', function(e) {
               originalPdfBytes.byteOffset,
               originalPdfBytes.byteOffset + originalPdfBytes.byteLength
             ),
-            totalPages, currentPage, stamps, stampHistory, colorCounters,
+            totalPages, currentPage, stamps, lines, stampHistory, colorCounters,
             hasUnsavedChanges,
             savedAt: Date.now(),
           };
@@ -1025,12 +1140,14 @@ self.addEventListener('fetch', function(e) {
           currentPage  = Math.min(Math.max(1, data.currentPage || 1), totalPages);
           stamps       = data.stamps || {};
           normalizeAllStampsArrowFields(stamps);
+          lines        = data.lines || {};
           stampHistory = data.stampHistory || [];
           recalcNextStampId();
           Object.assign(colorCounters, data.colorCounters || {});
           hasUnsavedChanges = !!data.hasUnsavedChanges;
           if (deleteMode) toggleDeleteMode();
           cancelPendingArrow();
+          cancelActiveDrawing();
 
           dropZoneEl.style.display   = "none";
           canvasWrap.style.display = "block";
@@ -1304,11 +1421,13 @@ self.addEventListener('fetch', function(e) {
           totalPages   = pdfDoc.numPages;
           currentPage  = 1;
           stamps       = {};
+          lines        = {};
           stampHistory = [];
           nextStampId  = 1;
           hasUnsavedChanges = false;
           if (deleteMode) toggleDeleteMode();
           cancelPendingArrow();
+          cancelActiveDrawing();
           PALETTE.forEach(p => { colorCounters[p.color] = 1; });
           dropZoneEl.style.display   = "none";
           canvasWrap.style.display = "block";
@@ -1452,7 +1571,8 @@ self.addEventListener('fetch', function(e) {
       }
 
       function updateCursor(state) {
-        if (deleteMode)             canvasWrap.style.cursor = "not-allowed";
+        if (deleteMode)                 canvasWrap.style.cursor = "not-allowed";
+        else if (penMode)               canvasWrap.style.cursor = "crosshair";
         else if (state === "grabbing")  canvasWrap.style.cursor = "grabbing";
         else if (zoomScale > 1.05) canvasWrap.style.cursor = "grab";
         else                        canvasWrap.style.cursor = "crosshair";
@@ -1490,6 +1610,9 @@ self.addEventListener('fetch', function(e) {
       canvasArea.addEventListener("touchstart", (e) => {
         if (!pdfDoc) return;
         if (e.touches.length === 2) {
+          // フリーペンモード中はCanvasの拡大率・表示位置を固定するため、
+          // ピンチズーム（2本指操作）を無効化する。
+          if (isCanvasFrozen()) return;
           touchState = "pinching";
           const t0 = e.touches[0], t1 = e.touches[1];
           const aRect = canvasArea.getBoundingClientRect();
@@ -1500,6 +1623,11 @@ self.addEventListener('fetch', function(e) {
           pinchStartMidX = (t0.clientX + t1.clientX) / 2 - aRect.left;
           pinchStartMidY = (t0.clientY + t1.clientY) / 2 - aRect.top;
         } else if (e.touches.length === 1) {
+          if (isPenDrawActive()) {
+            touchState = "drawing";
+            startLineDraw(e.touches[0].clientX, e.touches[0].clientY);
+            return;
+          }
           touchState     = "tap_wait";
           touchStartX    = e.touches[0].clientX;
           touchStartY    = e.touches[0].clientY;
@@ -1534,6 +1662,8 @@ self.addEventListener('fetch', function(e) {
           zoomScale = newZoom;
           applyTransform();
           showZoomBadge();
+        } else if (e.touches.length === 1 && touchState === "drawing") {
+          continueLineDraw(e.touches[0].clientX, e.touches[0].clientY);
         } else if (e.touches.length === 1 && touchState !== "pinching") {
           const dx = e.touches[0].clientX - touchStartX;
           const dy = e.touches[0].clientY - touchStartY;
@@ -1555,7 +1685,9 @@ self.addEventListener('fetch', function(e) {
                         = pinchStartMidX = pinchStartMidY = null;
         }
         if (e.touches.length === 0) {
-          if (touchState === "tap_wait" && Date.now() - touchStartTime <= TAP_DURATION_MAX) {
+          if (touchState === "drawing") {
+            finalizeLineDraw();
+          } else if (touchState === "tap_wait" && Date.now() - touchStartTime <= TAP_DURATION_MAX) {
             placeTapStamp(touchStartX, touchStartY);
           }
           touchState = "idle";
@@ -1577,6 +1709,12 @@ self.addEventListener('fetch', function(e) {
 
       canvasArea.addEventListener("mousedown", (e) => {
         if (isTouchDevice || !pdfDoc || e.button !== 0) return;
+        if (isPenDrawActive()) {
+          mouseState = "drawing";
+          startLineDraw(e.clientX, e.clientY);
+          e.preventDefault();
+          return;
+        }
         mouseState      = "drag_wait";
         mouseDragStartX = e.clientX;
         mouseDragStartY = e.clientY;
@@ -1588,6 +1726,10 @@ self.addEventListener('fetch', function(e) {
 
       document.addEventListener("mousemove", (e) => {
         if (isTouchDevice || mouseState === "idle") return;
+        if (mouseState === "drawing") {
+          continueLineDraw(e.clientX, e.clientY);
+          return;
+        }
         const dx = e.clientX - mouseDragStartX;
         const dy = e.clientY - mouseDragStartY;
         if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
@@ -1604,6 +1746,12 @@ self.addEventListener('fetch', function(e) {
 
       document.addEventListener("mouseup", (e) => {
         if (isTouchDevice) return;
+        if (mouseState === "drawing") {
+          finalizeLineDraw();
+          mouseState = "idle";
+          updateCursor();
+          return;
+        }
         if (mouseState === "drag_wait" && !mouseDragMoved) {
           const rect = canvasWrap.getBoundingClientRect();
           if (pdfDoc && e.clientX >= rect.left && e.clientX <= rect.right &&
@@ -1617,6 +1765,9 @@ self.addEventListener('fetch', function(e) {
 
       canvasArea.addEventListener("wheel", (e) => {
         e.preventDefault();
+        // フリーペンモード中はCanvasの拡大率を固定するため、ホイールズームも
+        // 無効化する（ピンチズームの無効化と同じ理由）。
+        if (isCanvasFrozen()) return;
         const delta = e.deltaY < 0 ? 0.12 : -0.12;
         const aRect = canvasArea.getBoundingClientRect();
         zoomAroundPoint(zoomScale + delta, e.clientX - aRect.left, e.clientY - aRect.top);
@@ -1782,9 +1933,13 @@ self.addEventListener('fetch', function(e) {
         const radius = sz / 2;
         const length = sz * 0.55;
         const strokeW = Math.max(1, sz * 0.05);
+        // 8個のガイドSVG＋リングをDocumentFragmentへまとめてから1回のappendChildで
+        // #canvas-wrapへ挿入する（8回individualにappendChildするより再描画・
+        // レイアウト計算の回数を抑えられる。ver1.19で最適化）。
+        const frag = document.createDocumentFragment();
         GUIDE_ANGLES.forEach((angle) => {
           const el = createArrowSvgEl(cx, cy, radius, angle, length, "rgba(255,255,255,0.55)", strokeW, "arrow-guide");
-          wrap.appendChild(el);
+          frag.appendChild(el);
         });
         const ring = document.createElement("div");
         ring.className = "arrow-wait-ring";
@@ -1792,7 +1947,8 @@ self.addEventListener('fetch', function(e) {
         ring.style.cssText =
           `left:${cx}px;top:${cy}px;width:${ringSz}px;height:${ringSz}px;` +
           `transform:translate(-50%,-50%);border-color:${stamp.color};`;
-        wrap.appendChild(ring);
+        frag.appendChild(ring);
+        wrap.appendChild(frag);
       }
 
       function clearArrowGuide() {
@@ -1860,6 +2016,172 @@ self.addEventListener('fetch', function(e) {
       counterWrapEl.addEventListener("mouseup",   () => { if (!isTouchDevice) endCounterPress(); });
       counterWrapEl.addEventListener("mouseleave", () => { if (!isTouchDevice) cancelCounterPress(); });
 
+      // ── フリーペンモード（ver1.20〜） ─────────────────────────────────────
+      // 右ツールバーのトグルボタン（#pen-mode-btn、カラースウォッチとカウンターの
+      // 間に配置）でON/OFFを切り替える「フリーペンモード」。ONの間はCanvasの
+      // 拡大率・表示位置がその瞬間の状態で固定され（ピンチズーム・2指パン・
+      // マウスホイールズームをすべて無効化）、指1本のドラッグ（またはマウス
+      // ドラッグ）でペイントツールのように自由な実線を描ける。
+      // 削除モード・矢印モードとは共存可能（同時にONにできる）。ただし入力の
+      // 優先順位は「削除モード（タップで削除）＞ フリーペンモード（ドラッグで
+      // 描画）＞ 通常のスタンプ配置（矢印モード込み）」の順。つまり削除モードが
+      // ONの間は、フリーペンモードが同時にONでもタップは削除として扱われ、
+      // 線は描けない（誤って描画しながら削除しようとする事故を避けるため）。
+      //
+      // 色・太さは「選択してからセットする」のではなく、パレット・スライダーの
+      // 現在値が常にそのまま次のストロークに使われる（ユーザー指定の仕様）。
+      // 色はスタンプ用パレット（PALETTE、5色）とは独立した専用パレット
+      // （PEN_PALETTE、5色+黒の6色、初期値は黒）を使う。
+      let penMode           = false;
+      let currentPenColor   = "#000000";
+      let penWidth          = 4;
+      let isDrawingLine     = false;
+      let currentDrawingLine = null;   // 描画中の線オブジェクト（points配列はPDF座標系）
+      let currentDrawingSvgEl = null;  // 描画中のライブプレビュー用SVG要素
+
+      const PEN_PALETTE = [...PALETTE, { color: "#000000", label: "黒" }];
+      const penSwatchEls = new Map(); // color -> .pen-swatch要素
+
+      (function initPenPalette() {
+        PEN_PALETTE.forEach((p) => {
+          const sw = document.createElement("div");
+          sw.className = "pen-swatch" + (p.color === currentPenColor ? " active" : "");
+          sw.style.background = p.color;
+          sw.title = p.label;
+          sw.dataset.color = p.color;
+          sw.addEventListener("click", () => selectPenColor(p.color));
+          penPaletteWrapEl.appendChild(sw);
+          penSwatchEls.set(p.color, sw);
+        });
+      })();
+
+      function selectPenColor(color) {
+        currentPenColor = color;
+        penSwatchEls.forEach((sw, c) => sw.classList.toggle("active", c === color));
+      }
+
+      function onPenWidthInput(value) {
+        penWidth = parseInt(value, 10);
+        penWidthValEl.textContent = value;
+      }
+
+      // カウンターサークルの長押し（矢印モード）と同様、フリーペンモードも
+      // トグルボタン1つでON/OFFする。ONにする際は、方向決定タップ待ち中の
+      // 矢印があれば（次のタップの意味が変わるため）先にキャンセルしておく。
+      // フリーペンモード中は常にCanvasの拡大率・表示位置を固定する（ピンチズーム・
+      // ホイールズームの無効化に使う）。一方、実際にドラッグ操作を「描画」として
+      // 扱うかどうかは削除モードとの優先順位があるため、別のヘルパーで判定する
+      // （削除モードが同時にONの間は、フリーペンモードがONでもタップ削除を優先し、
+      // 描画は行わない。「8. 既知の設計上の判断」参照）。
+      function isCanvasFrozen() { return penMode; }
+      function isPenDrawActive() { return penMode && !deleteMode; }
+
+      function togglePenMode() {
+        cancelActiveDrawing();
+        cancelPendingArrow();
+        penMode = !penMode;
+        penModeBtnEl.classList.toggle("pen-active", penMode);
+        penModeBannerEl.classList.toggle("show", penMode);
+        toolbarBottomEl.classList.toggle("pen-active", penMode);
+        // #toolbar-bottom・#toolbar-corner・#canvas-area・#toolbar-rightはいずれも
+        // --bottom-h-currentを高さ・位置の基準にしている（CSS側コメント参照）。
+        // ここでCSSカスタムプロパティの実際の値を書き換えることで、下ツールバーが
+        // 2段になった分だけ他の要素のレイアウトも連動して調整される。
+        document.documentElement.style.setProperty(
+          "--bottom-h-current", penMode ? "calc(var(--bottom-h) * 2)" : "var(--bottom-h)"
+        );
+        updateCursor();
+        showToast(penMode ? "✏️ フリーペンモードON：ドラッグして線を描画できます" : "フリーペンモードOFF");
+      }
+
+      // clientX/clientYのスクリーン座標を、PDF座標系の点とCanvas座標系
+      // （baseScale適用済み、canvasWrap基準）の点の両方に変換する。
+      // スタンプ配置（placeTapStamp）の座標変換と同じ考え方。
+      function screenToPdfPoint(clientX, clientY) {
+        const rect = canvasWrap.getBoundingClientRect();
+        const cx = (clientX - rect.left) / zoomScale;
+        const cy = (clientY - rect.top)  / zoomScale;
+        return { x: cx / baseScale, y: cy / baseScale, cssX: cx, cssY: cy };
+      }
+
+      // 描画中の線のライブプレビュー用SVGを作る／更新する。確定前の線は
+      // 少し透過させ、確定後（addLineDOM）と見分けやすくしている。
+      function updateDrawingPreview() {
+        if (!currentDrawingSvgEl || !currentDrawingLine) return;
+        const pts = currentDrawingLine.points;
+        const strokeW = Math.max(0.5, currentDrawingLine.width * baseScale);
+        const pointsStr = pts.map(p => `${p.x * baseScale},${p.y * baseScale}`).join(" ");
+        currentDrawingSvgEl.setAttribute("width", canvasW);
+        currentDrawingSvgEl.setAttribute("height", canvasH);
+        currentDrawingSvgEl.setAttribute("viewBox", `0 0 ${canvasW} ${canvasH}`);
+        if (pts.length === 1) {
+          const cx = pts[0].x * baseScale, cy = pts[0].y * baseScale;
+          currentDrawingSvgEl.innerHTML = `<circle cx="${cx}" cy="${cy}" r="${strokeW / 2}" fill="${currentDrawingLine.color}" opacity="0.85"/>`;
+        } else {
+          currentDrawingSvgEl.innerHTML = `<polyline points="${pointsStr}" fill="none" stroke="${currentDrawingLine.color}" stroke-width="${strokeW}" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`;
+        }
+      }
+
+      // 指・マウスが触れた瞬間（1点目）にストロークを開始する。矢印モードの
+      // 2タップ方式とは異なり、ペン描画はドラッグ操作でリアルタイムに1本の
+      // 線として作られる（ペイントツールと同じ挙動）。
+      function startLineDraw(clientX, clientY) {
+        if (!pdfDoc) return;
+        const p = screenToPdfPoint(clientX, clientY);
+        if (p.cssX < 0 || p.cssY < 0 || p.cssX > canvasW || p.cssY > canvasH) return;
+        isDrawingLine = true;
+        currentDrawingLine = { id: null, points: [{ x: p.x, y: p.y }], color: currentPenColor, width: penWidth };
+        currentDrawingSvgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        currentDrawingSvgEl.setAttribute("class", "pen-line-live");
+        canvasWrap.appendChild(currentDrawingSvgEl);
+        updateDrawingPreview();
+      }
+
+      // 直前に追加した点からこの距離（CSS px）以上動いた場合のみ新しい点を
+      // 追加する。タッチ・マウスのmoveイベントは非常に高頻度で発火するため、
+      // 全点を記録すると1本の線のデータ量が過大になる（保存・Undo・PDF出力の
+      // いずれにも不必要な負荷になる）ことを防ぐための間引き。
+      const LINE_POINT_MIN_DIST_CSS = 2.5;
+
+      function continueLineDraw(clientX, clientY) {
+        if (!isDrawingLine || !currentDrawingLine) return;
+        const p = screenToPdfPoint(clientX, clientY);
+        const cx = Math.max(0, Math.min(canvasW, p.cssX));
+        const cy = Math.max(0, Math.min(canvasH, p.cssY));
+        const last = currentDrawingLine.points[currentDrawingLine.points.length - 1];
+        const lastCssX = last.x * baseScale, lastCssY = last.y * baseScale;
+        if (Math.hypot(cx - lastCssX, cy - lastCssY) < LINE_POINT_MIN_DIST_CSS) return;
+        currentDrawingLine.points.push({ x: cx / baseScale, y: cy / baseScale });
+        updateDrawingPreview();
+      }
+
+      // ドラッグを離した時点でストロークを確定し、通常のスタンプと全く同じ
+      // 単位（stampHistoryへの1件のUndoエントリ、自動バックアップ対象、PDF保存
+      // 対象）として扱う。1点しか記録されなかった（ほぼ動かさずに離した）場合も
+      // 「点」として1本の線に含めて保存する。
+      function finalizeLineDraw() {
+        if (!isDrawingLine || !currentDrawingLine) return;
+        isDrawingLine = false;
+        if (currentDrawingSvgEl) { currentDrawingSvgEl.remove(); currentDrawingSvgEl = null; }
+        const line = currentDrawingLine;
+        currentDrawingLine = null;
+        line.id = genStampId();
+        if (!lines[currentPage]) lines[currentPage] = [];
+        lines[currentPage].push(line);
+        stampHistory.push({ type: "line", action: "place", pageNum: currentPage, line });
+        markDataChanged();
+        addLineDOM(line);
+        updateUndoBtn();
+      }
+
+      // 進行中のストロークを未確定のまま破棄する（ページ送り・モード切替・
+      // PDF再読込など、描画の途中で状況が変わった場合の安全策）。
+      function cancelActiveDrawing() {
+        isDrawingLine = false;
+        currentDrawingLine = null;
+        if (currentDrawingSvgEl) { currentDrawingSvgEl.remove(); currentDrawingSvgEl = null; }
+      }
+
       // ── スタンプ配置・削除（タップ共通入口） ─────────────────────────────
       function placeTapStamp(clientX, clientY) {
         const rect = canvasWrap.getBoundingClientRect();
@@ -1902,7 +2224,7 @@ self.addEventListener('fetch', function(e) {
         const stamp   = { id: genStampId(), x: pdfX, y: pdfY, num, color: currentColor, pdfSize, hasArrow: false, arrowAngle: null };
         if (!stamps[currentPage]) stamps[currentPage] = [];
         stamps[currentPage].push(stamp);
-        stampHistory.push({ action: "place", pageNum: currentPage, stamp });
+        stampHistory.push({ type: "stamp", action: "place", pageNum: currentPage, stamp });
         markDataChanged();
         addDotDOM(stamp, true);
         colorCounters[currentColor] = num >= 999 ? 1 : num + 1;
@@ -1925,31 +2247,80 @@ self.addEventListener('fetch', function(e) {
 
       // タップ位置（PDF座標系）に最も近いスタンプを1つ削除する。
       // 当たり判定はスタンプ半径に少し余裕を持たせ、小さいスタンプでも狙いやすくする。
+      // タップ位置（PDF座標系）に最も近いアイテム（スタンプまたは線）を1つ削除する。
+      // ver1.20〜：フリーペンモードの線も削除モードの対象に含める。スタンプは
+      // 中心からの距離、線は各線分（隣り合う2点を結ぶ線分）への垂線距離で
+      // それぞれ当たり判定を行い、最も近い方（距離が小さい方）を削除する。
       function deleteStampNear(pdfX, pdfY) {
-        const list = stamps[currentPage];
-        if (!list || list.length === 0) {
-          showToast("このページにスタンプがありません");
+        const stampList = stamps[currentPage] || [];
+        const lineList  = lines[currentPage] || [];
+        if (stampList.length === 0 && lineList.length === 0) {
+          showToast("このページにスタンプ・線がありません");
           return;
         }
         const HIT_MARGIN_PX = 14; // 画面ピクセル基準の当たり判定の余裕
-        let bestIdx = -1, bestDist = Infinity;
-        list.forEach((s, i) => {
+
+        let bestStampIdx = -1, bestStampDist = Infinity;
+        stampList.forEach((s, i) => {
           const dist = Math.hypot(s.x - pdfX, s.y - pdfY);
           const hitR = s.pdfSize / 2 + HIT_MARGIN_PX / baseScale;
-          if (dist <= hitR && dist < bestDist) { bestDist = dist; bestIdx = i; }
+          if (dist <= hitR && dist < bestStampDist) { bestStampDist = dist; bestStampIdx = i; }
         });
-        if (bestIdx === -1) return;
-        const [removed] = list.splice(bestIdx, 1);
-        stampHistory.push({ action: "delete", pageNum: currentPage, stamp: removed });
-        markDataChanged();
-        refreshStampDots(currentPage);
-        updateUndoBtn();
-        showToast(`スタンプ「${removed.num}」を削除しました`);
+
+        const lineHitR = HIT_MARGIN_PX / baseScale;
+        let bestLineIdx = -1, bestLineDist = Infinity;
+        lineList.forEach((l, i) => {
+          const pts = l.points || [];
+          let minDist = Infinity;
+          for (let k = 0; k < pts.length - 1; k++) {
+            const d = pointToSegmentDist(pdfX, pdfY, pts[k].x, pts[k].y, pts[k + 1].x, pts[k + 1].y);
+            if (d < minDist) minDist = d;
+          }
+          if (pts.length === 1) minDist = Math.hypot(pts[0].x - pdfX, pts[0].y - pdfY);
+          const hitR = lineHitR + (l.width || 0) / 2;
+          if (minDist <= hitR && minDist < bestLineDist) { bestLineDist = minDist; bestLineIdx = i; }
+        });
+
+        // スタンプと線の両方が当たり判定内にある場合は、より近い方を優先する。
+        if (bestStampIdx === -1 && bestLineIdx === -1) return;
+        const deleteLine = bestLineIdx !== -1 && (bestStampIdx === -1 || bestLineDist < bestStampDist);
+
+        if (deleteLine) {
+          const [removed] = lineList.splice(bestLineIdx, 1);
+          stampHistory.push({ type: "line", action: "delete", pageNum: currentPage, line: removed });
+          markDataChanged();
+          refreshStampDots(currentPage);
+          updateUndoBtn();
+          showToast("線を削除しました");
+        } else {
+          const [removed] = stampList.splice(bestStampIdx, 1);
+          stampHistory.push({ type: "stamp", action: "delete", pageNum: currentPage, stamp: removed });
+          markDataChanged();
+          refreshStampDots(currentPage);
+          updateUndoBtn();
+          showToast(`スタンプ「${removed.num}」を削除しました`);
+        }
+      }
+
+      // 点(px,py)から線分(x1,y1)-(x2,y2)までの最短距離（垂線距離、線分の外側は
+      // 端点までの距離）。deleteStampNear()の線への当たり判定で使う。
+      function pointToSegmentDist(px, py, x1, y1, x2, y2) {
+        const dx = x2 - x1, dy = y2 - y1;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+        let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+        t = Math.max(0, Math.min(1, t));
+        const projX = x1 + t * dx, projY = y1 + t * dy;
+        return Math.hypot(px - projX, py - projY);
       }
 
       // 削除モードのON/OFF切替
       function toggleDeleteMode() {
         cancelPendingArrow();
+        // フリーペンモードと共存可能なため、削除モードをONにした瞬間に
+        // 描画中のストロークがあれば安全のため破棄する（削除モードON中は
+        // タップ削除を優先し、描画は行わない設計のため）。
+        cancelActiveDrawing();
         deleteMode = !deleteMode;
         deleteModeBtnEl.classList.toggle("danger-active", deleteMode);
         deleteModeBannerEl.classList.toggle("show", deleteMode);
@@ -1957,16 +2328,47 @@ self.addEventListener('fetch', function(e) {
       }
 
       function refreshStampDots(pageNum) {
-        // .stamp-dot/.stamp-arrowは常にaddDotDOM()経由で#canvas-wrapの子要素として
-        // 追加されるため、documentツリー全体ではなくcanvasWrap配下だけを探索すれば
-        // 十分（ver1.13で最適化。ページ送り・スタンプ配置・削除・Undoのたびに
-        // 呼ばれる高頻度関数のため、探索範囲を絞る効果がある）。
-        canvasWrap.querySelectorAll(".stamp-dot, .stamp-arrow").forEach(d => d.remove());
-        (stamps[pageNum] || []).forEach(s => addDotDOM(s));
+        // .stamp-dot/.stamp-arrow/.pen-lineは常にaddDotDOM()・addLineDOM()経由で
+        // #canvas-wrapの子要素として追加されるため、documentツリー全体ではなく
+        // canvasWrap配下だけを探索すれば十分（ver1.13で最適化。ページ送り・
+        // スタンプ配置・削除・Undoのたびに呼ばれる高頻度関数のため、探索範囲を
+        // 絞る効果がある）。
+        canvasWrap.querySelectorAll(".stamp-dot, .stamp-arrow, .pen-line").forEach(d => d.remove());
+        // スタンプ数が多いページでは、1件ずつcanvasWrapへappendChildすると
+        // その都度レイアウト計算が走りうるため、DocumentFragmentへまとめて
+        // 構築してから1回のappendChildで挿入する（ver1.19で最適化）。
+        const frag = document.createDocumentFragment();
+        (stamps[pageNum] || []).forEach(s => addDotDOM(s, false, frag));
+        (lines[pageNum] || []).forEach(l => addLineDOM(l, frag));
+        canvasWrap.appendChild(frag);
       }
 
-      function addDotDOM(s, isNew = false) {
-        const wrap   = canvasWrap;
+      // 確定済みの線（フリーペンモード、ver1.20〜）をSVG polylineとして描画する。
+      // PDF座標系の各点をCSS座標系（baseScale適用）に変換してpolylineのpointsに
+      // 並べる。矢印・スタンプと同じく#canvas-wrapの子要素にすることで、パン・
+      // ズームのCSS transformに自動追従する。
+      function addLineDOM(l, container = canvasWrap) {
+        const pts = l.points || [];
+        if (pts.length === 0) return;
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "pen-line");
+        svg.setAttribute("width", canvasW);
+        svg.setAttribute("height", canvasH);
+        svg.setAttribute("viewBox", `0 0 ${canvasW} ${canvasH}`);
+        const strokeW = Math.max(0.5, l.width * baseScale);
+        const pointsStr = pts.map(p => `${p.x * baseScale},${p.y * baseScale}`).join(" ");
+        if (pts.length === 1) {
+          // 1点だけ（タップのみでドラッグしなかった）の場合は小さな点として表示する
+          const cx = pts[0].x * baseScale, cy = pts[0].y * baseScale;
+          svg.innerHTML = `<circle cx="${cx}" cy="${cy}" r="${strokeW / 2}" fill="${l.color}"/>`;
+        } else {
+          svg.innerHTML = `<polyline points="${pointsStr}" fill="none" stroke="${l.color}" stroke-width="${strokeW}" stroke-linecap="round" stroke-linejoin="round"/>`;
+        }
+        container.appendChild(svg);
+      }
+
+      function addDotDOM(s, isNew = false, container = canvasWrap) {
+        const wrap   = container;
         const dot    = document.createElement("div");
         dot.className = "stamp-dot" + (isNew ? " new-pop" : "");
         // PDF座標系 → CSS座標系（baseScale適用）
@@ -2015,14 +2417,38 @@ self.addEventListener('fetch', function(e) {
       // ── Undo ──────────────────────────────────────────────────────────────
       // ページをまたいでも「直前の操作」を正しく取り消せるよう、
       // stampHistory（操作した順の履歴）から最後の1件を逆操作する。
-      // action: "place"  → 配置を取り消す（リストから削除し、番号カウンターを戻す）
+      // type:   "stamp"（省略時のデフォルト、後方互換） / "line"（ver1.20〜）
+      // action: "place"  → 配置を取り消す（リストから削除。スタンプは番号カウンターも戻す）
       // action: "delete" → 削除を取り消す（リストに復元する。カウンターは変更しない）
       function undoLast() {
         cancelPendingArrow();
         if (stampHistory.length === 0) return;
         const entry = stampHistory.pop();
-        const { action, pageNum, stamp } = entry;
+        const { action, pageNum } = entry;
+        // typeを省略した古い履歴（ver1.19以前）は"stamp"として扱う後方互換フォールバック
+        const type = entry.type || "stamp";
 
+        if (type === "line") {
+          const line = entry.line;
+          const list = lines[pageNum];
+          if (action === "place") {
+            if (list) {
+              const idx = (line && typeof line.id === "number") ? list.findIndex(l => l.id === line.id) : -1;
+              if (idx !== -1) list.splice(idx, 1);
+            }
+          } else {
+            if (!lines[pageNum]) lines[pageNum] = [];
+            lines[pageNum].push(line);
+          }
+          if (pageNum === currentPage) refreshStampDots(currentPage);
+          markDataChanged();
+          updateUndoBtn();
+          const pageNote = pageNum === currentPage ? "" : `（${pageNum}ページ目）`;
+          showToast(action === "place" ? `線の描画を取り消しました${pageNote}` : `線の削除を取り消しました${pageNote}`);
+          return;
+        }
+
+        const stamp = entry.stamp;
         if (action === "place") {
           const list = stamps[pageNum];
           if (list) {
@@ -2075,9 +2501,11 @@ self.addEventListener('fetch', function(e) {
         pendingRestoreData = null;
         restoreOverlayEl.classList.remove("open");
         cancelPendingArrow();
+        cancelActiveDrawing();
 
         stamps       = data.stamps || {};
         normalizeAllStampsArrowFields(stamps);
+        lines        = data.lines || {};
         stampHistory = data.stampHistory || [];
         recalcNextStampId();
         Object.assign(colorCounters, data.colorCounters || {});
@@ -2126,6 +2554,9 @@ self.addEventListener('fetch', function(e) {
         // 別ページに取り残されて混乱するため、ページ送り時は必ず待機をキャンセルし、
         // 矢印なしの丸数字スタンプとして確定させる。
         cancelPendingArrow();
+        // フリーペンモードで描画中にページを切り替えることは通常のUIフローでは
+        // 起きないが、念のため未確定のストロークを破棄する安全策。
+        cancelActiveDrawing();
         // ページをまたいだまま削除モードのつもりで誤って新規スタンプを消す
         // 事故を防ぐため、ページ送り時は削除モードを自動でOFFにする。
         if (deleteMode) toggleDeleteMode();
@@ -2215,8 +2646,11 @@ self.addEventListener('fetch', function(e) {
           const font      = await pdfLibDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
 
           for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-            const list = stamps[pageNum];
-            if (!list || list.length === 0) continue;
+            const list     = stamps[pageNum];
+            const lineList = lines[pageNum];
+            const hasStamps = list && list.length > 0;
+            const hasLines  = lineList && lineList.length > 0;
+            if (!hasStamps && !hasLines) continue;
             const pdfPage = pages[pageNum - 1];
             // PDFページに /Rotate（90/180/270度）が設定されている場合、
             // pdf-libのgetSize()は回転前の生のMediaBoxサイズを返すのに対し、
@@ -2236,7 +2670,7 @@ self.addEventListener('fetch', function(e) {
             const vp0     = page.getViewport({ scale: 1 });
             const scaleX  = pW / vp0.width;
             const scaleY  = pH / vp0.height;
-            for (const s of list) {
+            for (const s of (hasStamps ? list : [])) {
               // 見た目座標系（pdf.js基準、左上原点）→ Y軸反転した見た目座標
               const vx = s.x * scaleX;
               const vy = pH - s.y * scaleY;
@@ -2315,6 +2749,39 @@ self.addEventListener('fetch', function(e) {
                 pdfPage.drawLine({ start: startP, end: tipP, thickness: lineThickness, color: strokeColor, opacity: 1 });
                 pdfPage.drawLine({ start: tipP, end: h1P, thickness: lineThickness, color: strokeColor, opacity: 1 });
                 pdfPage.drawLine({ start: tipP, end: h2P, thickness: lineThickness, color: strokeColor, opacity: 1 });
+              }
+            }
+
+            // フリーペンモード（ver1.20〜）で描いた線をPDFへ埋め込む。
+            // 各点をスタンプ・矢印と同じ座標変換（見た目座標系→Y軸反転→
+            // rotateViewportPointToRawPDF()で回転補正）で変換し、連続する点同士を
+            // pdf-libのdrawLine()で結ぶ（1本の線＝複数のdrawLine呼び出しの連なり）。
+            // 太さ（l.width）はスタンプのpdfSizeと同じ考え方でPDF座標系の値として
+            // 保持しているため、画面表示のarrowLen等と同様にscaleX/scaleYの平均で
+            // 出力サイズへ換算する。
+            for (const l of (hasLines ? lineList : [])) {
+              const pts = l.points || [];
+              if (pts.length === 0) continue;
+              const [rr, gg, bb] = hexToRgb01(l.color);
+              const lineColor = rgb(rr, gg, bb);
+              const thickness = Math.max(0.4, l.width * ((scaleX + scaleY) / 2));
+              if (pts.length === 1) {
+                // 1点のみ（タップだけでドラッグしなかった）の場合は小さな円として描く
+                const vx = pts[0].x * scaleX, vy = pH - pts[0].y * scaleY;
+                const p  = rotateViewportPointToRawPDF(vx, vy, rotation, rawW, rawH);
+                pdfPage.drawCircle({ x: p.x, y: p.y, size: thickness / 2, color: lineColor, opacity: 1 });
+                continue;
+              }
+              const rawPts = pts.map((pt) => {
+                const vx = pt.x * scaleX, vy = pH - pt.y * scaleY;
+                return rotateViewportPointToRawPDF(vx, vy, rotation, rawW, rawH);
+              });
+              for (let k = 0; k < rawPts.length - 1; k++) {
+                pdfPage.drawLine({
+                  start: rawPts[k], end: rawPts[k + 1],
+                  thickness, color: lineColor, opacity: 1,
+                  lineCap: PDFLib.LineCapStyle ? PDFLib.LineCapStyle.Round : undefined,
+                });
               }
             }
           }
@@ -2463,6 +2930,10 @@ self.addEventListener('fetch', function(e) {
           // という既存方針（「8. 既知の設計上の判断」参照）に合わせ、待機自体をキャンセル
           // して矢印なしのスタンプとして確定させることで解消した。
           cancelPendingArrow();
+          // フリーペンモードで描画中にリサイズ・画面回転が起きると、baseScaleの
+          // 作り直しにより描画中プレビューのサイズ計算がズレる可能性があるため、
+          // 矢印の待機と同様、未確定のストロークは安全のため破棄する。
+          cancelActiveDrawing();
           updateCounterUI();
           if (pdfDoc) renderPage(currentPage, true);
         }, 200);
@@ -2494,8 +2965,5 @@ self.addEventListener('fetch', function(e) {
       // スタンプ状態を自動復元する
       tryRestoreHandoffIfReturning();
     </script>
-
-    <a class="app-switch-fab" href="https://joujing9119-maker.github.io/jtable/" title="Jtableに切り替え" onclick="handleAppSwitch(event)">📋</a>
-    <button class="fullscreen-fab" id="fullscreen-fab-btn" onclick="toggleFullscreen()" title="全画面表示に切り替え">⛶</button>
   </body>
 </html>
