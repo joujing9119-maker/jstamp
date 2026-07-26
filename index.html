@@ -402,12 +402,21 @@
         font-size: 14px; color: rgba(255,255,255,0.75); text-align: center;
         margin-bottom: 18px; line-height: 1.5;
       }
-      #filename-panel {
+      /* 保存ダイアログ（#filename-overlay）と復元確認ダイアログ（#restore-overlay）は
+         同じ見た目のパネルを共有するため、共通クラス（.dialog-panel/.dialog-title/
+         .dialog-btns）でスタイルを定義する（ver1.23〜）。
+         【ver1.22で発見・ver1.23で修正】以前はこれらを#filename-panel/#filename-title/
+         #filename-btnsというIDで定義しており、2つのダイアログのHTMLが同じIDを
+         重複して使っていた（HTML的には無効。CSSはID重複時も両方の要素に適用される
+         ため見た目上の実害はなく、document.getElementById()によるJS参照も無いため
+         機能的な実害も無かったが、正しいHTMLではなかった）。クラスセレクタに変更し、
+         重複IDを解消した。 */
+      .dialog-panel {
         background: #2a2a2a; border-radius: 18px; padding: 22px 20px 18px;
         box-shadow: 0 12px 60px rgba(0,0,0,0.7); width: min(340px, 100%);
         border: 1px solid rgba(255,255,255,0.12);
       }
-      #filename-title {
+      .dialog-title {
         font-size: 13px; color: rgba(255,255,255,0.5); text-align: center;
         margin-bottom: 14px; font-weight: 600; letter-spacing: 0.08em;
       }
@@ -417,7 +426,7 @@
         font-family: inherit; margin-bottom: 14px; outline: none;
       }
       #filename-input:focus { border-color: rgba(255,255,255,0.4); }
-      #filename-btns { display: flex; gap: 10px; }
+      .dialog-btns { display: flex; gap: 10px; }
       .fn-btn {
         flex: 1; height: 48px; border-radius: 10px; border: none;
         font-size: 15px; font-weight: 700; cursor: pointer;
@@ -645,7 +654,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.22</div>
+    <div id="version-badge">ver1.23</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -672,10 +681,10 @@
     </div>
 
     <div id="filename-overlay" onclick="closeFilenameIfBg(event)">
-      <div id="filename-panel">
-        <div id="filename-title">保存するファイル名を入力してください</div>
+      <div class="dialog-panel">
+        <div class="dialog-title">保存するファイル名を入力してください</div>
         <input type="text" id="filename-input" />
-        <div id="filename-btns">
+        <div class="dialog-btns">
           <button class="fn-btn fn-cancel" onclick="closeFilenameDialog()">キャンセル</button>
           <button class="fn-btn fn-save" onclick="executeFileSave()">💾 保存</button>
         </div>
@@ -683,10 +692,10 @@
     </div>
 
     <div id="restore-overlay">
-      <div id="filename-panel">
-        <div id="filename-title">前回の作業が見つかりました</div>
+      <div class="dialog-panel">
+        <div class="dialog-title">前回の作業が見つかりました</div>
         <div id="restore-desc">保存されていないスタンプの配置が残っています。復元しますか？</div>
-        <div id="filename-btns">
+        <div class="dialog-btns">
           <button class="fn-btn fn-cancel" onclick="declineRestore()">復元しない</button>
           <button class="fn-btn fn-save" onclick="acceptRestore()">↺ 復元する</button>
         </div>
@@ -706,7 +715,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.22";
+        const CACHE_NAME = "jstamp-v1.23";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
