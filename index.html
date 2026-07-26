@@ -56,14 +56,19 @@
            ボタンと同じ60pxを直径にすることで、同じ列内できれいに揃って収まるようにする。 */
         --swatch-d: var(--nav-btn-w);
         --bottom-h: clamp(60px, 8.5vh, 96px);
-        /* フリーペンモード中は下ツールバーが2段（既存コントロール＋ペン用
-           コントロール）になり高さが増える。この増減をcanvas-area・toolbar-right・
-           toolbar-bottom・toolbar-corner・両FABボタンすべてで一貫させるため、
-           実際のレイアウト計算には--bottom-hではなく--bottom-h-currentを使う
-           （togglePenMode()がJSでこの値を書き換える。ver1.20〜）。
-           --bottom-h自体は行の内部サイズ（ボタン直径・文字サイズ等）の基準として
-           そのまま使い続けるため変更しない。 */
-        --bottom-h-current: var(--bottom-h);
+        /* ver1.22〜：フリーペンモード中のレイアウト変更は、以前（ver1.20〜1.21）は
+           下ツールバーを2段にする方式（--bottom-h-current）だったが、ユーザー要望により
+           「右ツールバーの左側に専用の列を増やす」方式に変更した。
+           --pen-col-w : ペン用の新しい列（色パレット＋太さ±ボタン）の幅。
+                         右ツールバーのボタン幅（--nav-btn-w）と揃えている。
+           --right-extra : フリーペンモードON時のみ、この列の分だけcanvas-areaの
+                         右端を余分に空けるためのオフセット。togglePenMode()が
+                         JSで calc(var(--pen-col-w) + var(--col-gap)) と 0px を
+                         切り替える。#toolbar-right・#toolbar-bottom・#toolbar-corner
+                         はこの新列の下側・下段には影響されないため対象外（詳細は
+                         #toolbar-penのCSSコメントを参照）。 */
+        --pen-col-w: 60px;
+        --right-extra: 0px;
         /* ボタン内のアイコン・ラベル文字サイズは、Jtableの実コード
            `.side-tool-btn .side-btn-icon`（26px）/`.side-btn-label`（13px）に
            合わせた固定値（ver1.06で修正。それ以前は`.nav-btn`側の値
@@ -85,12 +90,15 @@
       #canvas-area {
         position: absolute;
         top: 0; left: 0;
-        right: calc(var(--app-pad) + var(--right-w) + var(--col-gap));
-        bottom: var(--bottom-h-current);
+        /* ver1.22〜：フリーペンモード中は右側に#toolbar-penの列が増える分、
+           --right-extra（0pxまたはpen-col-w+col-gap）だけ余分に右端を狭める。 */
+        right: calc(var(--app-pad) + var(--right-w) + var(--col-gap) + var(--right-extra));
+        bottom: var(--bottom-h);
         overflow: hidden;
         background: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
                     linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
         background-size: 32px 32px; background-color: #222;
+        transition: right 0.15s ease;
       }
       #canvas-wrap {
         position: absolute;
@@ -128,6 +136,29 @@
         min-width: 60px; font-family: inherit;
       }
       #project-name-input::placeholder { color: rgba(255,255,255,0.35); font-weight: 400; }
+      /* 「Jtableへ切り替え」ボタン（ver1.22〜）：以前は画面左下に固定表示していたが、
+         ①全画面表示ボタンを完全廃止し、②このボタンをcanvas右上へ移動する、という
+         ユーザー指示により、#canvas-areaの子要素（position:absolute）としてここに
+         配置し直した。canvas右上に置くことで、#canvas-areaのoverflow:hiddenにより
+         自動的にcanvas領域内でクリップされる。
+         削除モード・矢印待機・フリーペンモードの各バナー（#mode-banners、
+         position:absolute; top:0）と表示位置が重なる場合は、「バナーの下に
+         少し余白を空けて表示（バナー表示中は少し下にずれる）」という仕様のため、
+         topの値は固定値ではなくupdateSwitchFabPosition()がJSで動的に
+         book計算・設定する（#mode-bannersの実際の高さをgetBoundingClientRect()で
+         測定し、その直下+10pxに配置。バナーが無ければtop:10pxのまま）。
+         z-index:70は#mode-banners（60）より大きくし、バナーの後ろに隠れて
+         押せなくなることがないようにしている。 */
+      .app-switch-fab {
+        position: absolute; top: 10px; right: 10px; z-index: 70;
+        width: 52px; height: 52px; border-radius: 50%;
+        background: linear-gradient(135deg, #8a63f2 0%, #5b3df0 100%);
+        color: #fff; display: flex; align-items: center; justify-content: center;
+        font-size: 24px; text-decoration: none;
+        box-shadow: 0 4px 15px rgba(91,61,240,0.4);
+        transition: top 0.15s ease;
+      }
+      .app-switch-fab:active { transform: scale(0.92); }
       #drop-zone {
         position: absolute; inset: 0; display: flex; flex-direction: column;
         align-items: center; justify-content: center; gap: 20px;
@@ -144,7 +175,7 @@
       }
       .btn-open-big:active { transform: scale(0.96); }
       #toolbar-right {
-        position: fixed; right: var(--app-pad); top: var(--app-pad); bottom: var(--bottom-h-current); width: var(--right-w);
+        position: fixed; right: var(--app-pad); top: var(--app-pad); bottom: var(--bottom-h); width: var(--right-w);
         background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
         -webkit-backdrop-filter: var(--toolbar-blur);
         display: flex; flex-direction: column; align-items: center;
@@ -163,37 +194,48 @@
         scrollbar-width: none; /* Firefox */
       }
       #toolbar-right::-webkit-scrollbar { display: none; } /* Chrome/Safari */
-      #toolbar-bottom {
-        position: fixed; left: 0; right: calc(var(--app-pad) + var(--right-w)); bottom: 0;
-        height: var(--bottom-h-current);
+      /* フリーペンモード用の新しい列（ver1.22〜）：以前（ver1.20〜1.21）は下ツール
+         バーを2段にする方式だったが、ユーザー要望により「右ツールバーの左側に
+         専用の列を増やす」方式に変更した。#toolbar-rightのすぐ左（col-gap分の
+         隙間を挟んで）に、同じ縦幅（top:app-pad 〜 bottom:bottom-h、つまり
+         #toolbar-rightと完全に同じ範囲。下ツールバーの高さ分＝bottom-h以下には
+         及ばないため、#toolbar-bottomの幅はこの列の影響を受けず変更不要）で
+         表示する。中身はペン用の色パレット（#pen-palette-wrap）と太さの±ボタン
+         （#pen-width-group）のみ。表示/非表示はtogglePenMode()が.showクラスで
+         切り替える（display:none/flexの単純な切替。#toolbar-rightのような
+         複雑なアニメーションは不要と判断し、代わりにcanvas-area側のtransition:
+         rightで見た目の遷移を出す）。 */
+      #toolbar-pen {
+        position: fixed; right: calc(var(--app-pad) + var(--right-w) + var(--col-gap));
+        top: var(--app-pad); bottom: var(--bottom-h); width: var(--pen-col-w);
         background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
         -webkit-backdrop-filter: var(--toolbar-blur);
-        display: flex; flex-direction: column;
+        display: none; flex-direction: column; align-items: center;
+        padding: 8px 2px; gap: var(--nav-gap); z-index: 100;
+        border-left: 1px solid rgba(255,255,255,0.08);
+        border-right: 1px solid rgba(255,255,255,0.08);
+        overflow-y: auto; overflow-x: hidden;
+        -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain;
+        scrollbar-width: none;
+      }
+      #toolbar-pen::-webkit-scrollbar { display: none; }
+      #toolbar-pen.show { display: flex; }
+      #toolbar-bottom {
+        position: fixed; left: 0; right: calc(var(--app-pad) + var(--right-w)); bottom: 0;
+        height: var(--bottom-h);
+        background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
+        -webkit-backdrop-filter: var(--toolbar-blur);
+        display: flex; align-items: center;
+        padding: 0 10px 0 14px; gap: 8px;
         z-index: 100; border-top: 1px solid rgba(255,255,255,0.08);
-        transition: height 0.15s ease;
       }
-      /* 下ツールバーは通常1段（#toolbar-bottom-row1のみ）だが、フリーペンモード中は
-         #toolbar-bottom-row2（ペン用の色パレット・太さスライダー）も表示され、
-         2段になる（ver1.20〜）。各行の高さは--bottom-h（1段分の基準高さ）で
-         揃えており、2段合計で--bottom-h-current（=--bottom-h*2）と一致する。 */
-      #toolbar-bottom-row1 {
-        display: flex; align-items: center; height: var(--bottom-h);
-        padding: 0 10px 0 14px; gap: 8px; flex-shrink: 0;
-      }
-      #toolbar-bottom-row2 {
-        display: none; align-items: center; height: var(--bottom-h);
-        padding: 0 10px 0 14px; gap: 8px; flex-shrink: 0;
-        border-top: 1px solid rgba(255,255,255,0.08);
-      }
-      #toolbar-bottom.pen-active #toolbar-bottom-row2 { display: flex; }
       #toolbar-corner {
-        position: fixed; right: var(--app-pad); bottom: 0; width: var(--right-w); height: var(--bottom-h-current);
+        position: fixed; right: var(--app-pad); bottom: 0; width: var(--right-w); height: var(--bottom-h);
         background: var(--toolbar-bg); backdrop-filter: var(--toolbar-blur);
         -webkit-backdrop-filter: var(--toolbar-blur); z-index: 101;
         border-left: 1px solid rgba(255,255,255,0.08);
         border-top: 1px solid rgba(255,255,255,0.08);
         display: flex; align-items: center; justify-content: center;
-        transition: height 0.15s ease;
       }
       .tb-label {
         font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
@@ -253,45 +295,6 @@
       .tb-icon-btn.success { color: #5dd47e; }
       .tb-icon-btn.accent { background: var(--accent); color: #fff; }
       .tb-icon-btn.accent:active { background: var(--accent2); }
-      /* Jtableへのワンタップ切り替えボタン。
-         Jtable側にも同じ仕組みでJスタンプへ戻るボタンを置いている。
-         以前はbottom:16pxで画面左下に固定していたが、下ツールバー（#toolbar-bottom、
-         高さ--bottom-h=88px）と重なって見えてしまっていたため、下ツールバーの
-         「上」＝canvas-area内の左下に来るよう bottom: calc(var(--bottom-h) + 16px) に変更。
-         ver1.20〜：フリーペンモード中は下ツールバーが2段になり高さが増えるため、
-         --bottom-hではなく--bottom-h-current基準にして、常に下ツールバーの
-         直上に来るようにしている。
-         z-indexは右ツールバー・下ツールバー(100/101)より高いままにしてあるので、
-         canvas-areaの内容（PDF・スタンプ）の上には重なって見える。
-         保存ダイアログ等のモーダル(200以上)よりは低いので、モーダル表示中は隠れて操作の邪魔にならない。 */
-      .app-switch-fab {
-        position: fixed; left: 16px; bottom: calc(var(--bottom-h-current) + 16px); z-index: 110;
-        width: 52px; height: 52px; border-radius: 50%;
-        background: linear-gradient(135deg, #8a63f2 0%, #5b3df0 100%);
-        color: #fff; display: flex; align-items: center; justify-content: center;
-        font-size: 24px; text-decoration: none;
-        box-shadow: 0 4px 15px rgba(91,61,240,0.4);
-        transition: bottom 0.15s ease;
-      }
-      .app-switch-fab:active { transform: scale(0.92); }
-      /* 全画面表示切り替えボタン。切り替えボタン（.app-switch-fab）のすぐ右隣に
-         配置する（Jtable側の「ホームボタンの隣に全画面ボタン」という配置に合わせた）。
-         形（52px円形）は.app-switch-fabと完全に統一し、色だけを変えて機能の違いが
-         わかるようにしている。
-         Fullscreen APIの対応状況はブラウザ・iPadのSafari/standalone表示モードに
-         よって差があるため、非対応の場合はtoggleFullscreen()内でトーストを出して
-         フォールバックする（詳細はJS側のコメント参照）。 */
-      .fullscreen-fab {
-        position: fixed; left: 76px; bottom: calc(var(--bottom-h-current) + 16px); z-index: 110;
-        width: 52px; height: 52px; border-radius: 50%;
-        background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.18);
-        color: #fff; display: flex; align-items: center; justify-content: center;
-        font-size: 22px; cursor: pointer; -webkit-tap-highlight-color: transparent;
-        transition: background 0.12s, transform 0.1s, bottom 0.15s ease;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-      }
-      .fullscreen-fab:active { transform: scale(0.92); background: rgba(255,255,255,0.22); }
-      .fullscreen-fab.active { background: rgba(255,255,255,0.26); border-color: rgba(255,255,255,0.35); }
       #palette-wrap { display: flex; flex-direction: column; flex-wrap: nowrap; align-items: center; justify-content: center; gap: var(--nav-group-gap); width: 100%; padding: 2px 4px; }
       .color-swatch {
         width: var(--swatch-d); height: var(--swatch-d); border-radius: 50%;
@@ -495,15 +498,18 @@
          削除モードボタンの塗りつぶし（.danger-active）と紛れないよう緑系にする。 */
       .tb-icon-btn.pen-active { background: #16a085; color: #fff; }
       .tb-icon-btn.pen-active:active { background: #138a71; }
-      /* 下ツールバー2段目：ペン用の色パレット（6色スウォッチ）＋太さスライダー。
-         右ツールバーの色スウォッチ（--swatch-d=60px）と違い、下ツールバーは
-         高さ--bottom-h基準の横並びのため、スウォッチは正方形の--pg-btn-dに
-         揃えた円形にしている。 */
-      #pen-palette-wrap { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+      /* #toolbar-pen（ver1.22〜、右ツールバー左側の新しいペン用列）の中身：
+         ペン用の色パレット（6色スウォッチ、縦並び）＋太さの±ボタン（4段階）。
+         以前（ver1.20〜1.21）は下ツールバー2段目に横並びで配置していたが、
+         ユーザー要望により右ツールバー左側の縦一列の専用列（#toolbar-pen）へ
+         移設した。列幅が--pen-col-w（=--nav-btn-wと同じ60px）と狭いため、
+         スウォッチは右ツールバー本来の色パレット（.color-swatch、--swatch-d）
+         と近いサイズ感になるよう調整している。 */
+      #pen-palette-wrap { display: flex; flex-direction: column; align-items: center; gap: var(--nav-group-gap); flex-shrink: 0; width: 100%; }
       .pen-swatch {
-        width: calc(var(--pg-btn-d) * 0.62); height: calc(var(--pg-btn-d) * 0.62);
+        width: calc(var(--pen-col-w) * 0.72); height: calc(var(--pen-col-w) * 0.72);
         border-radius: 50%; cursor: pointer; flex-shrink: 0;
-        border: calc(var(--pg-btn-d) * 0.62 * 0.1) solid transparent;
+        border: calc(var(--pen-col-w) * 0.72 * 0.1) solid transparent;
         transition: border-color 0.14s, box-shadow 0.14s;
         -webkit-tap-highlight-color: transparent;
       }
@@ -512,6 +518,16 @@
          薄いグレーの枠を常時付けて視認性を確保する。 */
       .pen-swatch[data-color="#000000"] { border-color: rgba(255,255,255,0.35); }
       .pen-swatch[data-color="#000000"].active { border-color: #fff; }
+      /* 太さの±ボタン（ver1.22〜）：以前はスライダー（1〜20）だったが、ユーザー
+         要望により「太さは1〜4の4段階、±ボタンで縦一列に収める」方式に変更。
+         ±ボタン自体は右ツールバーの.tb-icon-btnをそのまま流用（幅が
+         --pen-col-w=--nav-btn-wと一致するため違和感なく収まる）。中央の
+         現在値表示（#pen-width-val）は#counter-circleに近い見た目にしている。 */
+      #pen-width-val {
+        width: var(--pen-col-w); height: calc(var(--pen-col-w) * 0.6); flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px; font-weight: 900; color: #fff;
+      }
       /* 確定済みの線（.pen-line）・描画中のライブプレビュー（.pen-line-live）は、
          いずれもSVG polylineとしてJS側（addLineDOM/継続描画処理）が動的に生成し
          #canvas-wrapへ子要素として追加する（矢印・スタンプと同じ座標系に乗せる
@@ -533,6 +549,7 @@
           <div id="arrow-wait-banner" class="mode-banner">➤ タップして矢印の方向を決めてください（削除ボタンでキャンセル）</div>
           <div id="pen-mode-banner" class="mode-banner">✏️ フリーペンモード中：ドラッグして線を描画（拡大率・表示位置は固定）</div>
         </div>
+        <a class="app-switch-fab" id="app-switch-fab" href="https://joujing9119-maker.github.io/jtable/" title="Jtableに切り替え" onclick="handleAppSwitch(event)">📋</a>
         <div id="drop-zone">
           <div class="dz-icon">📄</div>
           <h2>PDFファイルを選択してください</h2>
@@ -587,30 +604,40 @@
         </div>
       </div>
 
+      <!-- フリーペンモード用の新しい列（ver1.22〜）：#toolbar-rightの左側に、
+           ペン用の色パレット（#pen-palette-wrap）と太さの±ボタン
+           （#pen-width-group）だけを縦一列に収める。表示/非表示は
+           togglePenMode()が.showクラスで切り替える（詳細はCSS側コメント、
+           「4.13 フリーペンモード」を参照）。 -->
+      <div id="toolbar-pen">
+        <div class="tb-label">色</div>
+        <div id="pen-palette-wrap"></div>
+        <div class="tb-divider"></div>
+        <div class="tb-label">太さ</div>
+        <div id="pen-width-group" class="toolbar-group">
+          <button class="tb-icon-btn" onclick="changePenWidth(1)" title="太さを増やす">
+            <span class="ib-icon">＋</span>
+          </button>
+          <div id="pen-width-val">2</div>
+          <button class="tb-icon-btn" onclick="changePenWidth(-1)" title="太さを減らす">
+            <span class="ib-icon">－</span>
+          </button>
+        </div>
+      </div>
+
       <div id="toolbar-bottom">
-        <div id="toolbar-bottom-row1">
-          <button class="pg-btn" id="prev-btn" disabled onclick="changePage(-1)">◀</button>
-          <div id="page-info-txt">— / —</div>
-          <button class="pg-btn" id="next-btn" disabled onclick="changePage(1)">▶</button>
-          <div class="tb-vdivider"></div>
-          <div class="slider-group">
-            <label>大きさ</label>
-            <input type="range" id="stamp-size" min="10" max="40" value="20" step="1" oninput="onStampSizeInput(this.value)" />
-            <span class="slider-val" id="size-val">20</span>
-          </div>
-          <div class="tb-vdivider"></div>
-          <button class="pg-btn" onclick="changeStampSize(-1)" title="スタンプ縮小">－</button>
-          <button class="pg-btn" onclick="changeStampSize(1)" title="スタンプ拡大">＋</button>
+        <button class="pg-btn" id="prev-btn" disabled onclick="changePage(-1)">◀</button>
+        <div id="page-info-txt">— / —</div>
+        <button class="pg-btn" id="next-btn" disabled onclick="changePage(1)">▶</button>
+        <div class="tb-vdivider"></div>
+        <div class="slider-group">
+          <label>大きさ</label>
+          <input type="range" id="stamp-size" min="10" max="40" value="20" step="1" oninput="onStampSizeInput(this.value)" />
+          <span class="slider-val" id="size-val">20</span>
         </div>
-        <div id="toolbar-bottom-row2">
-          <div id="pen-palette-wrap"></div>
-          <div class="tb-vdivider"></div>
-          <div class="slider-group">
-            <label>太さ</label>
-            <input type="range" id="pen-width" min="1" max="20" value="4" step="1" oninput="onPenWidthInput(this.value)" />
-            <span class="slider-val" id="pen-width-val">4</span>
-          </div>
-        </div>
+        <div class="tb-vdivider"></div>
+        <button class="pg-btn" onclick="changeStampSize(-1)" title="スタンプ縮小">－</button>
+        <button class="pg-btn" onclick="changeStampSize(1)" title="スタンプ拡大">＋</button>
       </div>
 
       <div id="toolbar-corner">
@@ -618,7 +645,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.21</div>
+    <div id="version-badge">ver1.22</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -672,17 +699,6 @@
          詳細は「4.1 PDF操作」「9. PDF読み込み」を参照。 -->
     <input type="file" id="file-input" accept="application/pdf" multiple onchange="loadPDF(this)" />
 
-    <!-- ver1.21〜：この2つのFABボタンは、以前は</script>より後（body末尾）に
-         配置されていた。この2要素はposition:fixedのためDOM上の位置は見た目に
-         影響しないが、script内で#fullscreen-fab-btnをdocument.getElementById()
-         によりキャッシュ（fullscreenBtnEl）しているため、script実行時点（HTML
-         パース中に同期的に実行される）でこのボタン要素がまだDOMに存在せず、
-         fullscreenBtnElが常にnullになってしまう不具合があった。static要素は
-         参照より前にDOM上へ存在している必要があるため、scriptタグより前へ
-         移動して修正した（詳細は「5.1 DOM要素・カラースウォッチのキャッシュ方針」「9. 変更履歴」ver1.21を参照）。 -->
-    <a class="app-switch-fab" href="https://joujing9119-maker.github.io/jtable/" title="Jtableに切り替え" onclick="handleAppSwitch(event)">📋</a>
-    <button class="fullscreen-fab" id="fullscreen-fab-btn" onclick="toggleFullscreen()" title="全画面表示に切り替え">⛶</button>
-
     <script>
       // 新しいService Workerへの切替が保留中かどうか（作業中は安全のためリロードを待つ）
       let pendingReload = false;
@@ -690,7 +706,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.21";
+        const CACHE_NAME = "jstamp-v1.22";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -897,13 +913,17 @@ self.addEventListener('fetch', function(e) {
       const restoreOverlayEl = document.getElementById("restore-overlay");
       const zoomBadgeEl      = document.getElementById("zoom-badge");
       const toastEl          = document.getElementById("toast");
-      const fullscreenBtnEl  = document.getElementById("fullscreen-fab-btn");
       const projectNameInputEl = document.getElementById("project-name-input");
       const penModeBtnEl     = document.getElementById("pen-mode-btn");
       const penModeBannerEl  = document.getElementById("pen-mode-banner");
-      const toolbarBottomEl  = document.getElementById("toolbar-bottom");
+      const toolbarPenEl     = document.getElementById("toolbar-pen");
       const penPaletteWrapEl = document.getElementById("pen-palette-wrap");
       const penWidthValEl    = document.getElementById("pen-width-val");
+      // ver1.22〜：「Jtableへ切り替え」ボタンをcanvas右上に移動したことに伴い、
+      // 上部バナー（#mode-banners）と表示位置が重なる場合にボタンをその分だけ
+      // 下にずらすための参照（updateSwitchFabPosition()参照）。
+      const modeBannersEl    = document.getElementById("mode-banners");
+      const appSwitchFabEl   = document.getElementById("app-switch-fab");
 
       // 色ごとのカウンター（キー: color文字列, 値: 次に置く番号 1〜999）
       const colorCounters = Object.fromEntries(PALETTE.map(p => [p.color, 1]));
@@ -1103,6 +1123,22 @@ self.addEventListener('fetch', function(e) {
           const tx = db.transaction(HANDOFF_STORE, "readwrite");
           tx.objectStore(HANDOFF_STORE).delete(HANDOFF_KEY);
         } catch (e) {}
+      }
+
+      // 「Jtableへ切り替え」ボタン（ver1.22〜、canvas右上に配置）の縦位置を、
+      // #mode-banners（削除モード/矢印待機/フリーペンモードの各バナー）の
+      // 実際の高さに応じて動的に調整する。バナーが1つも表示されていなければ
+      // 高さ0なのでtop:10px（CSS初期値）のまま、いずれかのバナーが表示されて
+      // いれば、その直下+10pxの余白を空けた位置にボタンをずらす（ユーザーとの
+      // Q&Aで「バナーの下に少し余白を空けて表示」が選ばれた）。複数バナーが
+      // 同時に表示される場合（削除モード＋フリーペンモード等）も、
+      // #mode-bannersはflex-columnで縦に積み上がるため、その合計高さを
+      // getBoundingClientRect()で実測するだけで正しく追従する。
+      // 呼び出し箇所：toggleDeleteMode() / cancelPendingArrow() /
+      // placeTapStamp()内の矢印待機バナー表示・非表示/ togglePenMode()。
+      function updateSwitchFabPosition() {
+        const bannerH = modeBannersEl.getBoundingClientRect().height;
+        appSwitchFabEl.style.top = (bannerH > 0 ? bannerH + 10 : 10) + "px";
       }
 
       // Jtableへの切り替えリンクがタップされた際の処理。
@@ -1962,14 +1998,15 @@ self.addEventListener('fetch', function(e) {
       // 丸数字のまま確定した状態になる（stamps配列・stampHistoryへは既に
       // 通常のスタンプとして登録済みのため、ここでは待機UIの解除のみ行う）。
       // 削除モードの切替、ページ送り、戻す、色選択、番号リセット、テンキーを開く、
-      // PDFを開く、保存ダイアログを開く、全画面切替など「スタンプ配置以外の
-      // ほとんどの操作」の入口で呼び出し、待機状態を残さないようにしている。
+      // PDFを開く、保存ダイアログを開くなど「スタンプ配置以外のほとんどの操作」の
+      // 入口で呼び出し、待機状態を残さないようにしている（ver1.22で全画面切替は廃止）。
       function cancelPendingArrow() {
         if (!pendingArrowStamp) return;
         pendingArrowStamp   = null;
         pendingArrowPageNum = null;
         clearArrowGuide();
         arrowWaitBannerEl.classList.remove("show");
+        updateSwitchFabPosition();
       }
 
       // カウンターサークルの長押しで矢印モードをON/OFFする。
@@ -2034,7 +2071,9 @@ self.addEventListener('fetch', function(e) {
       // （PEN_PALETTE、5色+黒の6色、初期値は黒）を使う。
       let penMode           = false;
       let currentPenColor   = "#000000";
-      let penWidth          = 4;
+      // ver1.22〜：太さの範囲は1〜4（4段階）、初期値は2に変更（以前は1〜20の
+      // スライダーで初期値4だった。ユーザーからの明示的な指示）。
+      let penWidth          = 2;
       let isDrawingLine     = false;
       let currentDrawingLine = null;   // 描画中の線オブジェクト（points配列はPDF座標系）
       let currentDrawingSvgEl = null;  // 描画中のライブプレビュー用SVG要素
@@ -2060,9 +2099,13 @@ self.addEventListener('fetch', function(e) {
         penSwatchEls.forEach((sw, c) => sw.classList.toggle("active", c === color));
       }
 
-      function onPenWidthInput(value) {
-        penWidth = parseInt(value, 10);
-        penWidthValEl.textContent = value;
+      // 太さの±ボタン（#pen-width-group、ver1.22〜）。以前は1〜20のスライダー
+      // だったが、ユーザー要望により「1〜4の4段階、±ボタンで縦一列に収める」
+      // 方式に変更した。スタンプサイズの changeStampSize() と同じ考え方で、
+      // 範囲外にはクランプするのみでボタン自体は無効化しない。
+      function changePenWidth(delta) {
+        penWidth = Math.max(1, Math.min(4, penWidth + delta));
+        penWidthValEl.textContent = penWidth;
       }
 
       // カウンターサークルの長押し（矢印モード）と同様、フリーペンモードも
@@ -2082,14 +2125,15 @@ self.addEventListener('fetch', function(e) {
         penMode = !penMode;
         penModeBtnEl.classList.toggle("pen-active", penMode);
         penModeBannerEl.classList.toggle("show", penMode);
-        toolbarBottomEl.classList.toggle("pen-active", penMode);
-        // #toolbar-bottom・#toolbar-corner・#canvas-area・#toolbar-rightはいずれも
-        // --bottom-h-currentを高さ・位置の基準にしている（CSS側コメント参照）。
-        // ここでCSSカスタムプロパティの実際の値を書き換えることで、下ツールバーが
-        // 2段になった分だけ他の要素のレイアウトも連動して調整される。
+        // ver1.22〜：以前は下ツールバーを2段化する方式（--bottom-h-current）
+        // だったが、ユーザー要望により「右ツールバー左側に専用列を増やす」
+        // 方式に変更した。#toolbar-penの表示切替と、#canvas-areaの右端を
+        // その列の分だけ狭める--right-extraの書き換えをここで行う。
+        toolbarPenEl.classList.toggle("show", penMode);
         document.documentElement.style.setProperty(
-          "--bottom-h-current", penMode ? "calc(var(--bottom-h) * 2)" : "var(--bottom-h)"
+          "--right-extra", penMode ? "calc(var(--pen-col-w) + var(--col-gap))" : "0px"
         );
+        updateSwitchFabPosition();
         updateCursor();
         showToast(penMode ? "✏️ フリーペンモードON：ドラッグして線を描画できます" : "フリーペンモードOFF");
       }
@@ -2214,6 +2258,7 @@ self.addEventListener('fetch', function(e) {
           pendingArrowPageNum = null;
           clearArrowGuide();
           arrowWaitBannerEl.classList.remove("show");
+          updateSwitchFabPosition();
           markDataChanged();
           refreshStampDots(currentPage);
           return;
@@ -2242,6 +2287,7 @@ self.addEventListener('fetch', function(e) {
           pendingArrowPageNum = currentPage;
           showArrowGuide(stamp);
           arrowWaitBannerEl.classList.add("show");
+          updateSwitchFabPosition();
         }
       }
 
@@ -2324,6 +2370,7 @@ self.addEventListener('fetch', function(e) {
         deleteMode = !deleteMode;
         deleteModeBtnEl.classList.toggle("danger-active", deleteMode);
         deleteModeBannerEl.classList.toggle("show", deleteMode);
+        updateSwitchFabPosition();
         updateCursor();
       }
 
@@ -2861,42 +2908,6 @@ self.addEventListener('fetch', function(e) {
         toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
       }
 
-      // ── 全画面表示切り替え ────────────────────────────────────────────────
-      // 標準のFullscreen APIを使用。iPad Safari（特にホーム画面追加のstandalone
-      // 表示）では、そもそもブラウザのアドレスバー等が最初から非表示のため
-      // 恩恵が薄い場合や、Fullscreen API自体が使えない場合がある。非対応・失敗時は
-      // エラーで処理を止めず、トーストで知らせるだけにする（他の操作の妨げにしない）。
-      function getFullscreenElement() {
-        return document.fullscreenElement || document.webkitFullscreenElement || null;
-      }
-      function toggleFullscreen() {
-        cancelPendingArrow();
-        if (!getFullscreenElement()) {
-          const el = document.documentElement;
-          const req = el.requestFullscreen || el.webkitRequestFullscreen;
-          if (!req) {
-            showToast("⚠ この環境では全画面表示に対応していません");
-            return;
-          }
-          req.call(el).catch(() => {
-            showToast("⚠ 全画面表示にできませんでした");
-          });
-        } else {
-          const exit = document.exitFullscreen || document.webkitExitFullscreen;
-          if (exit) exit.call(document);
-        }
-      }
-      // 全画面のON/OFFはブラウザの標準UI（Escキー等）からも変化しうるため、
-      // ボタン自身のクリックだけでなくfullscreenchangeイベントでも見た目を同期する。
-      function syncFullscreenBtn() {
-        const btn = fullscreenBtnEl;
-        const isFs = !!getFullscreenElement();
-        btn.classList.toggle("active", isFs);
-        btn.title = isFs ? "全画面表示を解除" : "全画面表示に切り替え";
-      }
-      document.addEventListener("fullscreenchange", syncFullscreenBtn);
-      document.addEventListener("webkitfullscreenchange", syncFullscreenBtn);
-
       // ── リサイズ対応 ──────────────────────────────────────────────────────
       // resizeは画面回転・Split View分割位置のドラッグなどで短時間に多数発火するため、
       // 間引きなしでrenderPage（Canvas再描画+全スタンプDOM再生成）を都度呼ぶと、
@@ -2935,6 +2946,10 @@ self.addEventListener('fetch', function(e) {
           // 矢印の待機と同様、未確定のストロークは安全のため破棄する。
           cancelActiveDrawing();
           updateCounterUI();
+          // 画面回転・リサイズで#mode-bannersのテキスト折り返し高さが変わる
+          // 可能性があるため、「Jtableへ切り替え」ボタン（canvas右上）の位置も
+          // 都度再計算する（ver1.22〜）。
+          updateSwitchFabPosition();
           if (pdfDoc) renderPage(currentPage, true);
         }, 200);
       });
@@ -2952,6 +2967,7 @@ self.addEventListener('fetch', function(e) {
       });
 
       updateCursor();
+      updateSwitchFabPosition();
 
       // 「開く」操作によるリロード後、自動でファイル選択ダイアログを再度開く
       try {
