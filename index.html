@@ -654,7 +654,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.23</div>
+    <div id="version-badge">ver1.26</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -715,7 +715,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.23";
+        const CACHE_NAME = "jstamp-v1.26";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -812,6 +812,12 @@ self.addEventListener('fetch', function(e) {
 
       // ── アプリ状態 ────────────────────────────────────────────────────────
       let pdfDoc           = null;
+      // 読み込んだPDFのレイヤー（Optional Content Groups）をすべて強制的に
+      // 「表示」状態にするための設定オブジェクト（ver1.26〜）。詳細は
+      // buildForceVisibleOCGConfig()のコメントを参照。PDFがOCGを持たない、
+      // またはこのpdf.jsビルドがOCG APIに対応していない場合はnullのままで、
+      // その場合renderPage()は従来通りの標準的な描画を行う（挙動に影響なし）。
+      let currentOCGConfig  = null;
       let originalPdfBytes = null;
       let originalFileName = "jstamp";
       let currentPage      = 1;
@@ -1097,6 +1103,12 @@ self.addEventListener('fetch', function(e) {
             ),
             totalPages, currentPage, stamps, lines, stampHistory, colorCounters,
             hasUnsavedChanges,
+            // ver1.24〜：Jtableへ切り替える直前のズーム率・表示位置（パン）・
+            // 選択中の色も保存する。以前はこれらを保存しておらず、Jtableから
+            // 戻ってきた際に常にフィット表示・パレット1色目にリセットされて
+            // しまい使用感が悪いとの指摘を受け、切り替え前の状態をそのまま
+            // 復元できるようにした（詳細は「4.8」「8. 既知の設計上の判断」を参照）。
+            zoomScale, panX, panY, currentColor,
             savedAt: Date.now(),
           };
           await new Promise((resolve, reject) => {
@@ -1181,6 +1193,7 @@ self.addEventListener('fetch', function(e) {
           originalPdfBytes = bytes;
           originalFileName = data.fileName || "jstamp";
           pdfDoc       = newDoc;
+          currentOCGConfig = await buildForceVisibleOCGConfig(pdfDoc);
           totalPages   = pdfDoc.numPages;
           currentPage  = Math.min(Math.max(1, data.currentPage || 1), totalPages);
           stamps       = data.stamps || {};
@@ -1190,6 +1203,24 @@ self.addEventListener('fetch', function(e) {
           recalcNextStampId();
           Object.assign(colorCounters, data.colorCounters || {});
           hasUnsavedChanges = !!data.hasUnsavedChanges;
+          // ver1.24〜：Jtableへ切り替える直前のズーム率・表示位置（パン）・
+          // 選択中の色を復元し、「切り替え前と同じ見た目・状態からそのまま
+          // 続けられる」体験にする（ユーザーからの明示的な指示）。
+          // 【重要】「8. 既知の設計上の判断」にある『画面回転・リサイズ時は常に
+          // フィット表示にリセットする』という方針とはあえて別の扱いにしている。
+          // 回転・リサイズは同じ作業セッション中に画面の物理的な向き・サイズが
+          // 変わるケースへの対処（古いズーム基準のままだと表示が破綻するため
+          // リセットする方が安全）だが、こちらはJtableとの間の一時的な離脱・
+          // 復帰であり、ユーザーは「さっき見ていた場所の続きから」を期待している
+          // ため、それぞれ別の判断がなされている。
+          // 旧バージョン（ver1.23以前）で保存されたハンドオフデータには
+          // zoomScale等のフィールドが存在しないため、その場合は安全な
+          // デフォルト値（フィット表示・パレット1色目）にフォールバックする。
+          zoomScale    = typeof data.zoomScale === "number" ? data.zoomScale : 1;
+          panX         = typeof data.panX === "number" ? data.panX : 0;
+          panY         = typeof data.panY === "number" ? data.panY : 0;
+          currentColor = data.currentColor || PALETTE[0].color;
+          swatchEls.forEach((sw, c) => sw.classList.toggle("active", c === currentColor));
           if (deleteMode) toggleDeleteMode();
           cancelPendingArrow();
           cancelActiveDrawing();
@@ -1201,9 +1232,10 @@ self.addEventListener('fetch', function(e) {
           prevBtnEl.disabled = false;
           nextBtnEl.disabled = false;
           updateCounterUI();
-          // 画面回転・リサイズ時と同じ考え方で、常にフィット表示から再開する
-          // （切り替え元とJtable滞在中で画面サイズ・向きが変わっている可能性があるため）。
-          await renderPage(currentPage, true);
+          // ver1.24〜：上で復元したzoomScale/panX/panYをそのまま使うため、
+          // fitOnLoad=falseでrenderPageを呼ぶ（trueにするとbaseScale再計算の
+          // 際にズーム・パンが強制的にリセットされてしまう）。
+          await renderPage(currentPage, false);
           showToast(`Jtableから戻りました（続きから再開：${totalPages}ページ）`);
         } catch (err) {
           console.error("[handoff] restore failed:", err);
@@ -1378,6 +1410,51 @@ self.addEventListener('fetch', function(e) {
         showToast("番号を「1」にリセットしました");
       }
 
+      // ── PDFレイヤー（Optional Content Groups）の強制表示（ver1.26〜） ──────
+      // 【背景】「マドリッチ」等の一部の図面・間取り作成ソフトが書き出すPDFは、
+      // 文字ラベル等をPDFのレイヤー機能（Optional Content Groups＝OCG）として
+      // 持ち、そのレイヤーのPDF内デフォルト状態が「非表示」に設定されている
+      // ケースがある。pdf.js（本アプリの画面描画に使用）はPDF仕様に忠実に
+      // この設定を守るため、該当レイヤーの文字がCanvas上で表示されない。
+      // 一方、iPad標準のPDFビューアなどOCGに対応していない・簡易的な実装の
+      // ビューアは、レイヤー機能自体を無視してすべてのコンテンツを表示するため、
+      // 「Jstamp上では文字が見えないのに、保存後に別ビューアで開くと文字が
+      // 見える」という食い違いが起きる（ユーザー報告と一致）。
+      // 【対応方針】本アプリは図面に注釈（スタンプ）を付けるための編集画面
+      // であり、レイヤーの表示/非表示を個別に切り替える機能は持たない
+      // （そのような要望は今のところ無い）ため、読み込んだPDFの全レイヤーを
+      // 常に「表示」状態に強制することで、元のソフトでのレイヤー設定に
+      // 関わらず、見えるべき文字・図形が確実に画面に表示されるようにする。
+      // 【注意】これは実物のPDFを確認しての検証ではなく、症状の再現状況
+      // （Jstamp内では非表示・保存後に別ビューアでは表示される）から
+      // 最も可能性が高い原因として立てた仮説に基づく対応。もし改善しない
+      // 場合は、他の原因（フォント埋め込み・エンコーディング関連等）を
+      // 疑う必要があるため、ユーザーに再現結果を確認すること。
+      async function buildForceVisibleOCGConfig(doc) {
+        try {
+          if (typeof doc.getOptionalContentConfig !== "function") return null;
+          const config = await doc.getOptionalContentConfig();
+          if (!config || typeof config.setVisibility !== "function") return null;
+          // pdf.jsのバージョンにより、レイヤー一覧の取得方法が
+          // getGroups()（Map想定）だったり異なる形だったりしうるため、
+          // 存在チェックのうえで安全に走査する。
+          const groups = typeof config.getGroups === "function" ? config.getGroups() : null;
+          if (groups) {
+            const ids = typeof groups.keys === "function" ? Array.from(groups.keys()) : Object.keys(groups);
+            ids.forEach((id) => {
+              try { config.setVisibility(id, true); } catch (e) {}
+            });
+          }
+          return config;
+        } catch (e) {
+          // 取得・設定に失敗した場合は「何もしない」（=従来通りの標準描画）へ
+          // 安全にフォールバックする。この機能自体が使えないだけで、
+          // PDF読み込み自体は通常通り継続させる。
+          console.warn("[ocg] force-visible config failed:", e.message);
+          return null;
+        }
+      }
+
       // ── PDF読み込み ───────────────────────────────────────────────────────
       // 「PDFを開く」ボタンの実際の入口。新しいService Workerへの切替が
       // 保留中で、かつ未保存の変更がない（＝何も失うものがない）場合は
@@ -1463,6 +1540,10 @@ self.addEventListener('fetch', function(e) {
           originalPdfBytes = newBytes;
           originalFileName = baseFileName;
           pdfDoc       = newDoc;
+          // ver1.26〜：読み込んだPDFのレイヤー（OCG）をすべて強制的に表示状態にする。
+          // 詳細は「PDFレイヤー（Optional Content Groups）の強制表示」セクションの
+          // buildForceVisibleOCGConfig()コメントを参照。
+          currentOCGConfig = await buildForceVisibleOCGConfig(pdfDoc);
           totalPages   = pdfDoc.numPages;
           currentPage  = 1;
           stamps       = {};
@@ -1507,6 +1588,7 @@ self.addEventListener('fetch', function(e) {
           // 読込失敗時は安全な初期状態に戻す（中途半端な状態で操作不能になるのを防ぐ）
           dropZoneEl.style.display   = "flex";
           canvasWrap.style.display = "none";
+          currentOCGConfig = null;
         }
 
         input.value = "";
@@ -1558,7 +1640,16 @@ self.addEventListener('fetch', function(e) {
         canvas.style.height = (vp.height / dpr) + "px";
         canvasW = vp.width  / dpr;
         canvasH = vp.height / dpr;
-        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        // ver1.26〜：currentOCGConfigが構築できている（=このPDFがOCGを持ち、
+        // かつpdf.jsがOCG APIに対応している）場合、全レイヤーを強制的に
+        // 「表示」状態にしたoptionalContentConfigPromiseを渡して描画する。
+        // 構築できていない場合（OCGなし・API非対応・取得失敗）はundefinedを
+        // 渡し、pdf.jsの標準の描画（PDF内のデフォルト設定通り）にフォールバック
+        // する（挙動に一切影響しない安全な形）。
+        await page.render({
+          canvasContext: ctx, viewport: vp,
+          optionalContentConfigPromise: currentOCGConfig ? Promise.resolve(currentOCGConfig) : undefined,
+        }).promise;
         if (myGen !== renderGeneration) return;
         // DOMレイアウト確定後にtransformを適用して正確に中央配置
         requestAnimationFrame(() => {
@@ -2779,13 +2870,25 @@ self.addEventListener('fetch', function(e) {
                 const mag = Math.hypot(dxScaled, dyScaled) || 1;
                 const uX = dxScaled / mag, uY = dyScaled / mag;
 
-                const headLen = r * 0.85;
                 // 【ver1.18】矢印の長さ（円の縁から先端までの距離）をユーザー依頼により
                 // 半分に変更。以前は「shaftLen = r*1.55」＝縁から先端まで0.55r
                 // だったところを、0.55r/2 = 0.275r とし、shaftLen = r*(1+0.275) = r*1.275
-                // とした。画面表示側（addDotDOM、arrowLen: sz*0.85→sz*0.425）と同じ
-                // 半分の比率にしており、画面表示とPDF出力の見た目を揃えている。
+                // とした。
                 const shaftLen = r * 1.275; // 円の中心から矢印先端までの距離
+                // 【ver1.25で発見・修正】ver1.18でshaftLen（軸の長さ）だけを半分にし、
+                // headLen（矢じりの大きさ）は「r*0.85の固定値」のまま変更していなかった。
+                // その結果、軸の縁から先端までの実長（edgeLen＝0.275r）に対して矢じり
+                // （0.85r）が3倍以上も大きいという不釣り合いな比率になり、さらに軸の
+                // 始点（半径r地点）が円のボーダー（半径0.93r〜1.07r相当）とほぼ重なって
+                // いたため、実際に目視できる軸の長さがごくわずかになっていた。
+                // 保存済みPDFを開き直すと「矢じり（傘）だけ残り、軸（棒）が消えたように
+                // 見える」というユーザー報告はこれが原因。
+                // 画面表示側（buildArrowMarkup）はheadLenを「軸の長さ×0.42」で計算して
+                // おり、軸を縮めれば矢じりも自動的に比例して縮む作りになっている
+                // （ver1.18時点でもこの整合は保たれていた）。PDF出力側だけこの比例関係
+                // から外れていたため、同じ考え方（headLen = 軸の実長 × 0.42）に統一した。
+                const edgeLen = shaftLen - r; // 円の縁から矢印の先端までの実長（0.275r）
+                const headLen = Math.max(r * 0.05, edgeLen * 0.42);
                 const startVx = cvx + uX * r,        startVy = cvy + uY * r;
                 const tipVx   = cvx + uX * shaftLen, tipVy   = cvy + uY * shaftLen;
                 const revX = -uX, revY = -uY;
