@@ -158,6 +158,17 @@
         box-shadow: 0 4px 15px rgba(91,61,240,0.4);
         transition: top 0.15s ease;
       }
+      /* ver1.28〜：見た目のサイズ（52×52pxの円）は変えずに、タップ／クリック
+         判定範囲だけを周囲5pxずつ広げるための透明な疑似要素。.app-switch-fab
+         自体がposition:absoluteで位置決めの基準（containing block）になっているため、
+         ::beforeにinset:-5pxを指定するだけで、実際に描画される円のさらに外側
+         5px分まで、同じ.app-switch-fab要素（アンカータグ）へのイベントとして
+         扱われるヒットエリアを確保できる（疑似要素は独立したDOM要素ではないため、
+         ここをタップ/クリックしてもイベントは親の.app-switch-fab自身で発生する）。
+         背景・見た目には一切影響しない（content:""のみ、色・枠線なし）。 */
+      .app-switch-fab::before {
+        content: ""; position: absolute; inset: -5px;
+      }
       .app-switch-fab:active { transform: scale(0.92); }
       #drop-zone {
         position: absolute; inset: 0; display: flex; flex-direction: column;
@@ -558,7 +569,7 @@
           <div id="arrow-wait-banner" class="mode-banner">➤ タップして矢印の方向を決めてください（削除ボタンでキャンセル）</div>
           <div id="pen-mode-banner" class="mode-banner">✏️ フリーペンモード中：ドラッグして線を描画（拡大率・表示位置は固定）</div>
         </div>
-        <a class="app-switch-fab" id="app-switch-fab" href="https://joujing9119-maker.github.io/jtable/" title="Jtableに切り替え" onclick="handleAppSwitch(event)">📋</a>
+        <a class="app-switch-fab" id="app-switch-fab" href="https://joujing9119-maker.github.io/jtable/" title="Jtableに切り替え" onclick="handleAppSwitch(event)" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()">📋</a>
         <div id="drop-zone">
           <div class="dz-icon">📄</div>
           <h2>PDFファイルを選択してください</h2>
@@ -654,7 +665,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.26</div>
+    <div id="version-badge">ver1.29</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -715,7 +726,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.26";
+        const CACHE_NAME = "jstamp-v1.29";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -791,6 +802,30 @@ self.addEventListener('fetch', function(e) {
 
       // ── pdf.js worker ─────────────────────────────────────────────────────
       pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.min.js";
+
+      // 【ver1.27で追加・重要】CJK（日本語等）のCID埋め込みフォントを正しく
+      // 描画するためのCMapリソース設定。
+      // 【経緯】マドリッチ（間取り作成ソフト）が書き出すPDFの日本語文字は、
+      // `.HiraKakuInterface-W4`という特殊なCIDフォント（Adobe-Japan1文字体系、
+      // Type0/CIDFontType0、フォント自体はPDFにFontFile3として正しく埋め込み
+      // 済み）で描画されている。この種のCIDフォントの文字コード→グリフの対応を
+      // 正しく解決するには、pdf.js側に標準CMapリソース（Adobe-Japan1等の文字体系
+      // 定義データ、`cmaps`フォルダ内の`.bcmap`ファイル群）を別途渡す必要がある
+      // （pdf.js自体の既知の仕様）。このリポジトリには元々`pdf.min.js`/
+      // `pdf.worker.min.js`/`pdf-lib.min.js`はあったが`cmaps`フォルダが
+      // 含まれておらず、`pdfjsLib.getDocument()`にもcMapUrlの指定がなかったため、
+      // 数字等の通常フォントは表示されるのに、CIDフォントで描画された日本語文字
+      // だけがJstamp上で表示されない（保存後に別ビューアで開くと正しく表示される）
+      // という不具合が起きていた。「マドリッチで作成したPDFの文字が読み込めない」
+      // というユーザー報告を受け、実際のPDFファイルを解析して特定した（詳細は
+      // 「4.14」「9. 変更履歴」ver1.27を参照）。
+      // 【対応】`cmaps`フォルダ（pdf.jsディストリビューション付属の標準CMap
+      // リソース一式）をリポジトリに追加し、`pdfjsLib.getDocument()`の呼び出しに
+      // `cMapUrl`（フォルダの場所）・`cMapPacked: true`（.bcmap＝パック済み
+      // バイナリ形式であることの指定）を渡すよう変更した。この設定はCIDフォント
+      // を使わない大多数の一般的なPDFには影響しない（該当リソースが必要なPDFの
+      // 時だけ、必要なCMapファイルがpdf.worker側から個別に取得される）。
+      const PDFJS_CMAP_OPTIONS = { cMapUrl: "./cmaps/", cMapPacked: true };
 
       // ── カラーパレット定義 ────────────────────────────────────────────────
       const PALETTE = [
@@ -1070,6 +1105,19 @@ self.addEventListener('fetch', function(e) {
       // 意図的なアプリ切り替え遷移中は、beforeunloadの「未保存の変更があります」
       // 警告を出さない（データはこの後IndexedDBへ保存されるため、実質的に失われない）。
       let switchingApps = false;
+      // 【ver1.29で追加】Jtableから戻ってきた直後（tryRestoreHandoffIfReturning()に
+      // よるズーム率・パン位置の復元直後）、この時刻より前は`resize`イベントによる
+      // 強制フィットリセット（fitOnLoad=true）を抑制する。iPad Safariでは、ページ
+      // ナビゲーション（Jtable→Jスタンプの遷移もこれに該当）の直後にアドレスバーの
+      // 表示が収縮し、実際に見えるビューポートの高さがわずかに変化する挙動があり、
+      // これが復元処理の直後に`resize`イベントとして発火してしまうことがある。
+      // 画面回転・ウィンドウリサイズ時は常にフィット表示へリセットするという既存
+      // 方針（「8. 既知の設計上の判断」）に沿ってresizeハンドラがrenderPage(...,true)
+      // を呼ぶと、この「戻ってきた直後の見かけ上のリサイズ」に巻き込まれて、
+      // せっかく復元したズーム率・パン位置が直後に上書きされてしまう不具合があった
+      // （選択色は resize ハンドラの影響を受けないため復元されたまま残り、ズーム・
+      // パンだけがリセットされる、というユーザー報告と一致）。
+      let suppressResizeFitUntil = 0;
 
       function openHandoffDB() {
         return new Promise((resolve, reject) => {
@@ -1188,7 +1236,7 @@ self.addEventListener('fetch', function(e) {
           const bytes      = new Uint8Array(data.pdfBytes);
           const pdfJsData  = bytes.slice();
           if (pdfDoc && typeof pdfDoc.destroy === "function") pdfDoc.destroy();
-          const newDoc = await pdfjsLib.getDocument({ data: pdfJsData }).promise;
+          const newDoc = await pdfjsLib.getDocument({ data: pdfJsData, ...PDFJS_CMAP_OPTIONS }).promise;
 
           originalPdfBytes = bytes;
           originalFileName = data.fileName || "jstamp";
@@ -1235,6 +1283,11 @@ self.addEventListener('fetch', function(e) {
           // ver1.24〜：上で復元したzoomScale/panX/panYをそのまま使うため、
           // fitOnLoad=falseでrenderPageを呼ぶ（trueにするとbaseScale再計算の
           // 際にズーム・パンが強制的にリセットされてしまう）。
+          // 【ver1.29〜】復元直後にiPad Safari特有の見かけ上のresizeイベントが
+          // 発火してもフィットリセットされないよう、一定時間（2000ms）resizeハンドラ
+          // 側の強制リセットを抑制する時刻を記録しておく（詳細はsuppressResizeFitUntil
+          // 宣言部のコメントを参照）。
+          suppressResizeFitUntil = Date.now() + 2000;
           await renderPage(currentPage, false);
           showToast(`Jtableから戻りました（続きから再開：${totalPages}ページ）`);
         } catch (err) {
@@ -1534,7 +1587,7 @@ self.addEventListener('fetch', function(e) {
             pdfDoc.destroy();
           }
 
-          const newDoc = await pdfjsLib.getDocument({ data: pdfJsData }).promise;
+          const newDoc = await pdfjsLib.getDocument({ data: pdfJsData, ...PDFJS_CMAP_OPTIONS }).promise;
 
           // ここまで到達して初めて状態を確定する（途中で例外が出ても前の状態を壊さない）
           originalPdfBytes = newBytes;
@@ -3062,7 +3115,14 @@ self.addEventListener('fetch', function(e) {
           // 可能性があるため、「Jtableへ切り替え」ボタン（canvas右上）の位置も
           // 都度再計算する（ver1.22〜）。
           updateSwitchFabPosition();
-          if (pdfDoc) renderPage(currentPage, true);
+          // 【ver1.29〜】Jtableから戻ってきた直後（suppressResizeFitUntilで
+          // 指定した期間内）は、iPad Safari特有の見かけ上のresizeイベントに
+          // 巻き込まれて復元したズーム率・パン位置がリセットされないよう、
+          // fitOnLoad=falseで呼ぶ（baseScale自体は通常通り再計算されるため、
+          // 実際に画面サイズが変わっていれば表示崩れは起きない。変わるのは
+          // 「ズーム・パンを1.0/中央に強制リセットするかどうか」のみ）。
+          // 期間外（通常の画面回転・リサイズ）は従来通りtrueでフィット表示に戻す。
+          if (pdfDoc) renderPage(currentPage, Date.now() >= suppressResizeFitUntil);
         }, 200);
       });
 
