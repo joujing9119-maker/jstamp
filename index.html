@@ -409,6 +409,13 @@
         z-index: 300; display: none; align-items: center; justify-content: center; padding: 20px;
       }
       #restore-overlay.open { display: flex; }
+      /* ver1.30〜：未保存の変更がある状態で「PDFを開く」を押した際の確認
+         ダイアログ。#restore-overlayと同じ見た目・重なり順で扱う。 */
+      #unsaved-open-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+        z-index: 300; display: none; align-items: center; justify-content: center; padding: 20px;
+      }
+      #unsaved-open-overlay.open { display: flex; }
       #restore-desc {
         font-size: 14px; color: rgba(255,255,255,0.75); text-align: center;
         margin-bottom: 18px; line-height: 1.5;
@@ -438,6 +445,10 @@
       }
       #filename-input:focus { border-color: rgba(255,255,255,0.4); }
       .dialog-btns { display: flex; gap: 10px; }
+      /* PDFを開く前の未保存確認ダイアログ（ver1.30〜）は「保存してから開く／
+         保存せず開く／キャンセル」の3択のボタンを持つため、横並び（.dialog-btns）
+         だと1つ1つが細くなり押しづらい。縦一列に並べる専用クラス。 */
+      .dialog-btns-col { display: flex; flex-direction: column; gap: 10px; }
       .fn-btn {
         flex: 1; height: 48px; border-radius: 10px; border: none;
         font-size: 15px; font-weight: 700; cursor: pointer;
@@ -446,6 +457,13 @@
       .fn-btn:active { transform: scale(0.95); }
       .fn-cancel { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.5); }
       .fn-save { background: #1e5e38; color: #5dd47e; }
+      /* 「保存せずに開く」＝データを破棄する操作であることを視覚的に強調する
+         警告色（削除系の配色に近いオレンジ〜赤系）。ver1.30〜。 */
+      .fn-danger { background: #6b3a2a; color: #ffb37a; }
+      .dialog-desc-text {
+        font-size: 14px; color: rgba(255,255,255,0.75); text-align: center;
+        margin-bottom: 18px; line-height: 1.5;
+      }
       #toast {
         position: fixed; bottom: 90px; left: 50%;
         transform: translateX(-50%) translateY(80px);
@@ -665,7 +683,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.29</div>
+    <div id="version-badge">ver1.30</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -696,7 +714,7 @@
         <div class="dialog-title">保存するファイル名を入力してください</div>
         <input type="text" id="filename-input" />
         <div class="dialog-btns">
-          <button class="fn-btn fn-cancel" onclick="closeFilenameDialog()">キャンセル</button>
+          <button class="fn-btn fn-cancel" onclick="cancelFilenameDialog()">キャンセル</button>
           <button class="fn-btn fn-save" onclick="executeFileSave()">💾 保存</button>
         </div>
       </div>
@@ -709,6 +727,20 @@
         <div class="dialog-btns">
           <button class="fn-btn fn-cancel" onclick="declineRestore()">復元しない</button>
           <button class="fn-btn fn-save" onclick="acceptRestore()">↺ 復元する</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 未保存の変更がある状態で「PDFを開く」を押した際の確認ダイアログ
+         （ver1.30〜）。詳細は「4.16 未保存確認ダイアログ」を参照。 -->
+    <div id="unsaved-open-overlay" onclick="closeUnsavedOpenIfBg(event)">
+      <div class="dialog-panel">
+        <div class="dialog-title">保存されていない変更があります</div>
+        <div class="dialog-desc-text">このまま新しいPDFを開くと、現在の作業内容（スタンプ・線）は失われます。</div>
+        <div class="dialog-btns-col">
+          <button class="fn-btn fn-save" onclick="confirmSaveThenOpen()">💾 保存してから開く</button>
+          <button class="fn-btn fn-danger" onclick="confirmOpenWithoutSaving()">⚠ 保存せずに開く</button>
+          <button class="fn-btn fn-cancel" onclick="closeUnsavedOpenConfirm()">キャンセル</button>
         </div>
       </div>
     </div>
@@ -726,7 +758,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.29";
+        const CACHE_NAME = "jstamp-v1.30";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -932,6 +964,13 @@ self.addEventListener('fetch', function(e) {
       // なく動作はしていたが、strictモードでは即エラーになる潜在的バグだった）。
       // ESLint（no-undefルール）で検出し、明示的な宣言を追加した。
       let pendingRestoreData = null;
+      // 「保存されていない変更があります」確認ダイアログ（ver1.30〜）で
+      // 「保存してから開く」を選んだ場合に立てるフラグ。trueの間にsavePDF()が
+      // 成功すると、保存完了直後に自動でファイル選択ダイアログへ進む
+      // （ユーザーが改めて「PDFを開く」を押し直す手間を省くため）。
+      // ファイル名ダイアログを明示的にキャンセルした場合（cancelFilenameDialog()）
+      // にはfalseへ戻し、意図せず後の保存で勝手にファイル選択が開かないようにする。
+      let pendingOpenAfterSave = false;
       // ── DOM要素のキャッシュ ──────────────────────────────────────────────
       // 静的に存在し、複数の関数から繰り返し参照される要素はここで一度だけ
       // 取得してまとめてキャッシュする（`getElementById`自体は高速だが、
@@ -961,6 +1000,7 @@ self.addEventListener('fetch', function(e) {
       const filenameOverlayEl = document.getElementById("filename-overlay");
       const filenameInputEl  = document.getElementById("filename-input");
       const restoreOverlayEl = document.getElementById("restore-overlay");
+      const unsavedOpenOverlayEl = document.getElementById("unsaved-open-overlay");
       const zoomBadgeEl      = document.getElementById("zoom-badge");
       const toastEl          = document.getElementById("toast");
       const projectNameInputEl = document.getElementById("project-name-input");
@@ -984,21 +1024,79 @@ self.addEventListener('fetch', function(e) {
       // スタンプを置く・消す・取り消すたびに即座にlocalStorageへ保存する。
       // 保存対象はPDF本体ではなく、軽量なスタンプ座標データのみ
       // （PDF本体はファイル名・サイズで同一性を判定する用途にのみ使う）。
-      const BACKUP_KEY = "jstamp_backup_v1";
-      function saveBackup() {
+      // 【ver1.30〜、単一スロット方式から複数スロット方式へ変更】
+      // 以前（ver0.88〜1.29）は`jstamp_backup_v1`という単一のキーにしか
+      // バックアップを保持できず、「未保存のPDF Aを開いたまま、確認なしで
+      // PDF Bを開いてしまう」→「Bで何かスタンプを置く」という操作をすると、
+      // Aのバックアップがそのまま上書きされて消えてしまう問題があった
+      // （「Bを1件も操作しなければAのバックアップはまだ残っている」という
+      // 極めて限定的な状況でしか保険として機能していなかった）。
+      // ver1.30で、PDFファイルごと（ファイル名＋サイズの組をキーにする）に
+      // 独立したバックアップスロットを持てるよう変更し、複数の未保存PDFを
+      // うっかり行き来しても、それぞれのファイルを再度開けば直前の状態を
+      // 復元できるようにした（4.16の「PDFを開く前の未保存確認ダイアログ」と
+      // 併用する保険としての位置づけ）。
+      const BACKUP_PREFIX = "jstamp_backup_v2:";
+      // 個別バックアップの一覧（{key, fileName, fileSize, savedAt}の配列）。
+      // 際限なくlocalStorageを消費しないよう、更新日時の新しい方から
+      // BACKUP_MAX_ENTRIES件だけを残し、あふれた古いスロットは実体ごと削除する。
+      const BACKUP_INDEX_KEY = "jstamp_backup_index_v2";
+      const BACKUP_MAX_ENTRIES = 10;
+      // ver1.29以前の単一スロット方式が使っていたキー。ver1.30移行直後、
+      // まだ新方式のバックアップが存在しないファイルを開いた場合に限り、
+      // このキーの中身を読みにいくことで、アップデート直前に置いていた
+      // 未保存データを失わないようにする（後方互換のための一度きりの救済措置。
+      // 新方式へ書き戻しはしないが、実害はない＝次にそのファイルへ何か操作を
+      // すればsaveBackup()が新方式のキーへ書き込むため）。
+      const LEGACY_BACKUP_KEY = "jstamp_backup_v1";
+
+      function backupKeyFor(fileName, fileSize) {
+        return BACKUP_PREFIX + fileSize + ":" + fileName;
+      }
+
+      function loadBackupIndex() {
         try {
+          const raw = localStorage.getItem(BACKUP_INDEX_KEY);
+          return raw ? JSON.parse(raw) : [];
+        } catch (e) {
+          return [];
+        }
+      }
+
+      function saveBackupIndex(list) {
+        try {
+          localStorage.setItem(BACKUP_INDEX_KEY, JSON.stringify(list));
+        } catch (e) {
+          console.warn("[backup] index save failed:", e.message);
+        }
+      }
+
+      function saveBackup() {
+        // PDFが開かれていない状態（drop-zone表示中）では、紐付けるファイルが
+        // ないためバックアップ自体を作らない（markDataChanged経由の呼び出しは
+        // 常にPDF読込後のスタンプ・線操作からのみ発生するため、通常は
+        // originalPdfBytesが必ず存在するが、念のためガードしておく）。
+        if (!originalPdfBytes) return;
+        try {
+          const fileName = originalFileName;
+          const fileSize = originalPdfBytes.length;
+          const key = backupKeyFor(fileName, fileSize);
+          const savedAt = Date.now();
           const payload = {
-            fileName: originalFileName,
-            fileSize: originalPdfBytes ? originalPdfBytes.length : 0,
-            totalPages,
-            currentPage,
-            stamps,
-            lines,
-            stampHistory,
-            colorCounters,
-            savedAt: Date.now(),
+            fileName, fileSize, totalPages, currentPage,
+            stamps, lines, stampHistory, colorCounters, savedAt,
           };
-          localStorage.setItem(BACKUP_KEY, JSON.stringify(payload));
+          localStorage.setItem(key, JSON.stringify(payload));
+
+          let index = loadBackupIndex().filter((e) => e.key !== key);
+          index.push({ key, fileName, fileSize, savedAt });
+          index.sort((a, b) => b.savedAt - a.savedAt);
+          const overflow = index.slice(BACKUP_MAX_ENTRIES);
+          index = index.slice(0, BACKUP_MAX_ENTRIES);
+          overflow.forEach((e) => {
+            try { localStorage.removeItem(e.key); } catch (er) {}
+          });
+          saveBackupIndex(index);
         } catch (e) {
           // 容量超過等で保存に失敗してもアプリ自体は継続させる（バックアップは保険のため）
           console.warn("[backup] save failed:", e.message);
@@ -1007,11 +1105,18 @@ self.addEventListener('fetch', function(e) {
 
       function loadBackupIfMatches(fileName, fileSize) {
         try {
-          const raw = localStorage.getItem(BACKUP_KEY);
-          if (!raw) return null;
-          const data = JSON.parse(raw);
-          if (data.fileName === fileName && data.fileSize === fileSize) {
-            return data;
+          const key = backupKeyFor(fileName, fileSize);
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const data = JSON.parse(raw);
+            if (data.fileName === fileName && data.fileSize === fileSize) return data;
+          }
+          // 新方式のスロットが見つからない場合のみ、ver1.29以前の単一スロット
+          // バックアップを後方互換で確認する（詳細はLEGACY_BACKUP_KEYのコメント参照）。
+          const legacyRaw = localStorage.getItem(LEGACY_BACKUP_KEY);
+          if (legacyRaw) {
+            const legacyData = JSON.parse(legacyRaw);
+            if (legacyData.fileName === fileName && legacyData.fileSize === fileSize) return legacyData;
           }
         } catch (e) {
           console.warn("[backup] load failed:", e.message);
@@ -1019,8 +1124,18 @@ self.addEventListener('fetch', function(e) {
         return null;
       }
 
-      function clearBackup() {
-        try { localStorage.removeItem(BACKUP_KEY); } catch (e) {}
+      // 指定したファイル（省略時は現在開いているファイル）のバックアップ
+      // スロットのみを削除する。他のファイルのバックアップスロットには
+      // 影響しない（ver1.30〜、複数スロット化に伴う変更）。
+      function clearBackup(fileName, fileSize) {
+        const fn = fileName !== undefined ? fileName : originalFileName;
+        const fs = fileSize !== undefined ? fileSize : (originalPdfBytes ? originalPdfBytes.length : 0);
+        try {
+          const key = backupKeyFor(fn, fs);
+          localStorage.removeItem(key);
+          const index = loadBackupIndex().filter((e) => e.key !== key);
+          saveBackupIndex(index);
+        } catch (e) {}
       }
 
       // スタンプの追加・削除・Undoなど「データが変化した」操作の後は必ずこれを呼ぶ。
@@ -1513,8 +1628,26 @@ self.addEventListener('fetch', function(e) {
       // 保留中で、かつ未保存の変更がない（＝何も失うものがない）場合は
       // ここで安全にリロードしてから最新版でファイル選択を行う。
       // 未保存の変更がある場合はリロードせず、そのまま通常通りファイルを開く。
+      // 【ver1.30〜】未保存の変更（`hasUnsavedChanges`）がある状態でこの
+      // ボタンが押された場合は、即座にファイル選択ダイアログへは進まず、
+      // まず確認ダイアログ（`#unsaved-open-overlay`）を挟む。以前は無条件で
+      // 新しいPDFの読込に進んでいたため、「保存前に誤って別のPDFを開いてしまい、
+      // 直前の作業が失われる」事故が起きていた。詳細は「4.16 未保存確認
+      // ダイアログ」を参照。
       function openFilePicker() {
         cancelPendingArrow();
+        if (hasUnsavedChanges) {
+          showUnsavedOpenConfirm();
+          return;
+        }
+        proceedOpenFilePicker();
+      }
+
+      // 実際にファイル選択ダイアログを開く処理そのもの（以前の`openFilePicker()`
+      // 本体）。未保存確認が不要と判断された場合（変更なし／確認ダイアログで
+      // 「保存せず開く」が選ばれた場合／保存が成功し自動的に続行する場合）に
+      // 呼ばれる共通の実処理。
+      function proceedOpenFilePicker() {
         if (pendingReload && !hasUnsavedChanges) {
           pendingReload = false;
           try { sessionStorage.setItem("jstamp_reopen_picker", "1"); } catch (e) {}
@@ -1522,6 +1655,33 @@ self.addEventListener('fetch', function(e) {
           return;
         }
         fileInputEl.click();
+      }
+
+      function showUnsavedOpenConfirm() {
+        unsavedOpenOverlayEl.classList.add("open");
+      }
+      function closeUnsavedOpenConfirm() {
+        unsavedOpenOverlayEl.classList.remove("open");
+      }
+      function closeUnsavedOpenIfBg(e) {
+        if (e.target === unsavedOpenOverlayEl) closeUnsavedOpenConfirm();
+      }
+      // 「保存せずに開く」：確認ダイアログを閉じ、そのままファイル選択へ進む
+      // （＝現在の未保存の変更は破棄される。バックアップ自体は直前のmarkDataChanged
+      // 呼び出し時点のものがlocalStorageに残っており、後から同じPDFを開き直せば
+      // 復元確認ダイアログ経由で拾える。「4.6」「4.16」を参照）。
+      function confirmOpenWithoutSaving() {
+        closeUnsavedOpenConfirm();
+        proceedOpenFilePicker();
+      }
+      // 「保存してから開く」：確認ダイアログを閉じ、保存ファイル名ダイアログを
+      // 開く。`pendingOpenAfterSave`を立てておくことで、savePDF()が成功した
+      // 直後に自動的にファイル選択ダイアログへ続行する（ユーザーが保存後に
+      // 改めて「PDFを開く」を押し直す手間を省く）。
+      function confirmSaveThenOpen() {
+        closeUnsavedOpenConfirm();
+        pendingOpenAfterSave = true;
+        openSaveDialog();
       }
 
       // ver1.11〜：#file-inputにmultiple属性を付けたため、1件選択時は従来通りの
@@ -2807,8 +2967,19 @@ self.addEventListener('fetch', function(e) {
         filenameOverlayEl.classList.remove("open");
       }
 
+      // ユーザーが明示的にファイル名ダイアログをキャンセルした場合専用の入口
+      // （キャンセルボタン・背景タップ）。`closeFilenameDialog()`自体は
+      // `executeFileSave()`（実際に保存を実行する側）からも呼ばれるため、
+      // そちらで`pendingOpenAfterSave`をリセットしてしまうと「保存してから
+      // 開く」フローが機能しなくなる。キャンセル操作のときだけ、保存せずに
+      // ダイアログを閉じたことになるため、待機中の自動継続フラグも解除する。
+      function cancelFilenameDialog() {
+        pendingOpenAfterSave = false;
+        closeFilenameDialog();
+      }
+
       function closeFilenameIfBg(e) {
-        if (e.target === filenameOverlayEl) closeFilenameDialog();
+        if (e.target === filenameOverlayEl) cancelFilenameDialog();
       }
 
       async function executeFileSave() {
@@ -3044,10 +3215,19 @@ self.addEventListener('fetch', function(e) {
           }
           if (shareCancelled) {
             showToast("保存をキャンセルしました");
+            // 共有シートでのキャンセルは「保存されていない」状態のままなので、
+            // pendingOpenAfterSave（あれば）はクリアせず残す。ユーザーが再度
+            // 保存を試みて成功すれば、その時点であらためて自動継続する。
           } else {
             hasUnsavedChanges = false;
             clearBackup();
             showToast("✅ " + filename + " を保存しました");
+            // 【ver1.30〜】「保存してから開く」経由の保存が成功した場合、
+            // 続けて自動的にファイル選択ダイアログへ進む（4.16参照）。
+            if (pendingOpenAfterSave) {
+              pendingOpenAfterSave = false;
+              proceedOpenFilePicker();
+            }
           }
         } catch (err) {
           console.error(err);
