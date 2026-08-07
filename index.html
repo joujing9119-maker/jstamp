@@ -416,10 +416,6 @@
         z-index: 300; display: none; align-items: center; justify-content: center; padding: 20px;
       }
       #unsaved-open-overlay.open { display: flex; }
-      #restore-desc {
-        font-size: 14px; color: rgba(255,255,255,0.75); text-align: center;
-        margin-bottom: 18px; line-height: 1.5;
-      }
       /* 保存ダイアログ（#filename-overlay）と復元確認ダイアログ（#restore-overlay）は
          同じ見た目のパネルを共有するため、共通クラス（.dialog-panel/.dialog-title/
          .dialog-btns）でスタイルを定義する（ver1.23〜）。
@@ -683,7 +679,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.30</div>
+    <div id="version-badge">ver1.31</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -723,7 +719,7 @@
     <div id="restore-overlay">
       <div class="dialog-panel">
         <div class="dialog-title">前回の作業が見つかりました</div>
-        <div id="restore-desc">保存されていないスタンプの配置が残っています。復元しますか？</div>
+        <div id="restore-desc" class="dialog-desc-text">保存されていないスタンプの配置が残っています。復元しますか？</div>
         <div class="dialog-btns">
           <button class="fn-btn fn-cancel" onclick="declineRestore()">復元しない</button>
           <button class="fn-btn fn-save" onclick="acceptRestore()">↺ 復元する</button>
@@ -758,7 +754,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.30";
+        const CACHE_NAME = "jstamp-v1.31";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -3232,6 +3228,14 @@ self.addEventListener('fetch', function(e) {
         } catch (err) {
           console.error(err);
           showToast("⚠ 保存中にエラーが発生しました: " + err.message);
+          // 【ver1.31で発見・修正】保存自体が例外で失敗した場合、以前は
+          // pendingOpenAfterSave（「保存してから開く」経由であることを示すフラグ）
+          // をリセットしていなかった。そのため、ここで保存に失敗した後、ユーザーが
+          // 全く無関係な別の保存操作を成功させると、そちらの保存完了をトリガーに
+          // 「開く前の保存」が成功したと誤認してファイル選択ダイアログが勝手に
+          // 開いてしまう不具合があった。保存に失敗した時点では「保存してから開く」
+          // フローは達成されていないため、フラグを明示的にfalseへ戻す。
+          pendingOpenAfterSave = false;
         }
       }
 
