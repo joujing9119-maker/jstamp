@@ -679,7 +679,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.31</div>
+    <div id="version-badge">ver1.32</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -754,7 +754,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.31";
+        const CACHE_NAME = "jstamp-v1.32";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -3090,27 +3090,52 @@ self.addEventListener('fetch', function(e) {
                 const mag = Math.hypot(dxScaled, dyScaled) || 1;
                 const uX = dxScaled / mag, uY = dyScaled / mag;
 
-                // 【ver1.18】矢印の長さ（円の縁から先端までの距離）をユーザー依頼により
-                // 半分に変更。以前は「shaftLen = r*1.55」＝縁から先端まで0.55r
-                // だったところを、0.55r/2 = 0.275r とし、shaftLen = r*(1+0.275) = r*1.275
-                // とした。
-                const shaftLen = r * 1.275; // 円の中心から矢印先端までの距離
-                // 【ver1.25で発見・修正】ver1.18でshaftLen（軸の長さ）だけを半分にし、
-                // headLen（矢じりの大きさ）は「r*0.85の固定値」のまま変更していなかった。
-                // その結果、軸の縁から先端までの実長（edgeLen＝0.275r）に対して矢じり
-                // （0.85r）が3倍以上も大きいという不釣り合いな比率になり、さらに軸の
-                // 始点（半径r地点）が円のボーダー（半径0.93r〜1.07r相当）とほぼ重なって
-                // いたため、実際に目視できる軸の長さがごくわずかになっていた。
-                // 保存済みPDFを開き直すと「矢じり（傘）だけ残り、軸（棒）が消えたように
-                // 見える」というユーザー報告はこれが原因。
-                // 画面表示側（buildArrowMarkup）はheadLenを「軸の長さ×0.42」で計算して
-                // おり、軸を縮めれば矢じりも自動的に比例して縮む作りになっている
-                // （ver1.18時点でもこの整合は保たれていた）。PDF出力側だけこの比例関係
-                // から外れていたため、同じ考え方（headLen = 軸の実長 × 0.42）に統一した。
-                const edgeLen = shaftLen - r; // 円の縁から矢印の先端までの実長（0.275r）
+                // 【ver1.32で全面的に見直し】保存前にJスタンプの画面上に表示されている
+                // 矢印と、保存後のPDFに描画される矢印が「見た目上まったく同じ」に
+                // なるよう、画面表示側（addDotDOM()/buildArrowMarkup()）とまったく
+                // 同じ比率で計算し直した。
+                //
+                // 【ver1.25までの実装で起きていた問題】
+                // 円のボーダー（枠線）の描き方が、画面表示側とPDF出力側で異なっていた。
+                //   ・画面表示側：div要素にCSSの`border`を指定しており、
+                //     box-sizing:border-box（全称ルールで指定済み）のため、
+                //     ボーダーは要素の**内側**に描かれる。つまり半径sz/2の地点が
+                //     「円の見た目上の一番外側」そのものであり、矢印もその地点
+                //     （radius=sz/2）から描き始めれば、何にも隠れることなく
+                //     全長がそのまま見える。
+                //   ・PDF出力側：pdf-libの`drawCircle({size:r, borderWidth:...})`は、
+                //     半径rの円周**を中心線として**ボーダーをストロークするため、
+                //     ボーダーは内側にr*0.07・外側にr*0.07はみ出す（円の見た目上の
+                //     一番外側は`r`ではなく`r*1.07`になる）。矢印の始点を画面表示側と
+                //     同じ考え方で単純に「半径r地点」から描いていたため、実際には
+                //     矢印の始点付近（rから1.07rまでの区間）がボーダーの内側に隠れて
+                //     しまっていた。ver1.18でユーザー依頼により矢印全体の長さを半分に
+                //     縮めた際、この「ボーダーに隠れて見えない固定の長さ」が全体に
+                //     占める割合が相対的に大きくなり、結果として保存後のPDFを開き直す
+                //     と矢印がほとんど点のようにしか見えない状態になっていた
+                //     （ver1.25時点では矢じりと軸の比率だけを揃えたが、この
+                //     ボーダーの隠れ分は未対応のまま残っていた）。
+                //
+                // 【ver1.32の対応】
+                // 矢印の始点を、画面表示側と同じ「円の見た目上の一番外側」に揃えるため、
+                // ボーダーの外周（r*1.07、ボーダー中心r±半幅r*0.07の外側）を始点にした。
+                // その上で、矢印の長さ・矢じりの大きさ・線の太さは、画面表示側の
+                // 計算式（sz＝画面上の円の直径、radius＝sz/2）とまったく同じ比率
+                // （pdfSizeから導かれる半径rを画面側のradiusと同じ意味の値として扱う）
+                // で算出する：
+                //   画面表示側 addDotDOM(): arrowLen = sz*0.425 = radius*0.85
+                //   → PDF出力側　　　　　　: edgeLen  = r*0.85（同じ0.85倍）
+                //   画面表示側 buildArrowMarkup(): headLen = max(4, length*0.42)
+                //   → PDF出力側　　　　　　　　　: headLen = max(r*0.05, edgeLen*0.42)（同じ0.42倍）
+                //   画面表示側 addDotDOM(): arrowStrokeW = max(1.2, sz*0.09) = max(1.2, radius*0.18)
+                //   → PDF出力側　　　　　　: lineThickness = max(0.6, r*0.18)（同じ0.18倍）
+                // これにより、保存前の画面表示と保存後のPDFとで矢印の見た目（始点位置・
+                // 長さ・矢じりの大きさ・太さの比率）が一致する。
+                const borderOuterR = r * 1.07; // 円のボーダー外周（見た目上の円の一番外側）
+                const edgeLen = r * 0.85;      // 円の縁から矢印の先端までの実長（画面表示側と同じ比率）
                 const headLen = Math.max(r * 0.05, edgeLen * 0.42);
-                const startVx = cvx + uX * r,        startVy = cvy + uY * r;
-                const tipVx   = cvx + uX * shaftLen, tipVy   = cvy + uY * shaftLen;
+                const startVx = cvx + uX * borderOuterR,             startVy = cvy + uY * borderOuterR;
+                const tipVx   = cvx + uX * (borderOuterR + edgeLen), tipVy   = cvy + uY * (borderOuterR + edgeLen);
                 const revX = -uX, revY = -uY;
                 // ver1.13：ベクトル回転の計算はbuildArrowMarkup()と共通の
                 // rotateVectorDeg()に統一した（以前はここにほぼ同じ内容の
@@ -3124,7 +3149,7 @@ self.addEventListener('fetch', function(e) {
                 const tipP   = rotateViewportPointToRawPDF(tipVx, tipVy, rotation, rawW, rawH);
                 const h1P    = rotateViewportPointToRawPDF(h1Vx, h1Vy, rotation, rawW, rawH);
                 const h2P    = rotateViewportPointToRawPDF(h2Vx, h2Vy, rotation, rawW, rawH);
-                const lineThickness = Math.max(0.6, r * 0.16);
+                const lineThickness = Math.max(0.6, r * 0.18);
                 pdfPage.drawLine({ start: startP, end: tipP, thickness: lineThickness, color: strokeColor, opacity: 1 });
                 pdfPage.drawLine({ start: tipP, end: h1P, thickness: lineThickness, color: strokeColor, opacity: 1 });
                 pdfPage.drawLine({ start: tipP, end: h2P, thickness: lineThickness, color: strokeColor, opacity: 1 });
