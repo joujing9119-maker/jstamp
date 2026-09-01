@@ -679,7 +679,7 @@
       </div>
     </div>
 
-    <div id="version-badge">ver1.32</div>
+    <div id="version-badge">ver1.33</div>
     <div id="zoom-badge">100%</div>
 
     <div id="numpad-overlay" onclick="closeNumpadIfBg(event)">
@@ -754,7 +754,7 @@
       // ── Service Worker (Blob URL方式) ──────────────────────────────────────
       (function registerServiceWorker() {
         if (!("serviceWorker" in navigator)) return;
-        const CACHE_NAME = "jstamp-v1.32";
+        const CACHE_NAME = "jstamp-v1.33";
         const CACHE_URLS = [
           "./pdf.min.js",
           "./pdf.worker.min.js",
@@ -3048,9 +3048,41 @@ self.addEventListener('fetch', function(e) {
               const r           = (s.pdfSize / 2) * ((scaleX + scaleY) / 2);
               const [rr, gg, bb] = hexToRgb01(s.color);
               const strokeColor  = rgb(rr, gg, bb);
+              // 【ver1.33で修正（ver1.32は矢印側だけの補正で不完全だった）】
+              // 画面表示側（CSSの`border`、box-sizing:border-box）はボーダーを
+              // 要素の内側だけに描くため、半径`r`の地点がそのまま「円の見た目上の
+              // 一番外側」になる。一方pdf-libの`drawCircle`は、指定した`size`
+              // （円の半径）の円周を**中心線として**ボーダーをストロークするため、
+              // ボーダーは内側・外側それぞれに半幅ずつはみ出し、円の見た目上の
+              // 一番外側は`size`ではなく`size + borderWidth/2`になる。
+              // 【検証方法】この違いは推測ではなく、実際にNode.js上でpdf-libを
+              // 使ってPDFを生成し、生成されたPDFのcontent stream（描画オペレータ）
+              // をzlib展開・直接解析して、パスの半径が指定した`size`と正確に
+              // 一致すること、PDF仕様上ストロークは常にパス上に中心線を置いて
+              // 描かれる（`w`＝線幅がパスを中心に内外へ均等にストロークされる）
+              // ことを確認して特定した。
+              // このため、単純に`size: r`で描画すると、円の見た目上の実際の
+              // 半径は`r`ではなく`r*1.07`になってしまい、画面表示側（実際の
+              // 半径が常に`r`と一致する）より円自体が一回り大きく見えるズレが
+              // 生じていた。文字サイズ（`maxTw`等、下記）は`r`を基準に計算して
+              // いるため、この食い違いは文字と円のバランスにも影響していた。
+              // 【ver1.32時点の不完全な対応との違い】ver1.32では円自体はそのまま
+              // （`size: r`のまま）にして、矢印側の始点だけを`r*1.07`へずらす
+              // 補正で対応しようとしたが、これは「円自体が画面表示より一回り
+              // 大きく見える」というズレ自体は解消しておらず、根本原因（円の
+              // 描画方法の違い）に対する対症療法にとどまっていた。ver1.33では
+              // 円自体の描画半径を修正し、ボーダー込みの見た目上の半径が
+              // 画面表示側と同じく常に`r`ちょうどになるようにした（下記）。
+              // これにより、矢印側は画面表示側の計算式をそのまま`r`基準で使う
+              // だけで一致するようになり、別途の補正係数が不要になった。
+              // 対応として、ボーダーの内外はみ出し分（半幅）をあらかじめ差し引いた
+              // 半径でパスを描くことで、ボーダー込みの見た目上の半径が
+              // ちょうど`r`（画面表示側の半径と同じ意味）になるようにした。
+              const circleBorderWidth = r * 0.14;
+              const circleDrawR = r - circleBorderWidth / 2; // 見た目上の半径がrになるよう内側にずらして描画
               pdfPage.drawCircle({
-                x: cx, y: cy, size: r,
-                borderColor: strokeColor, borderWidth: r * 0.14,
+                x: cx, y: cy, size: circleDrawR,
+                borderColor: strokeColor, borderWidth: circleBorderWidth,
                 borderOpacity: 1, opacity: 0,
               });
               const label  = String(s.num);
@@ -3090,52 +3122,48 @@ self.addEventListener('fetch', function(e) {
                 const mag = Math.hypot(dxScaled, dyScaled) || 1;
                 const uX = dxScaled / mag, uY = dyScaled / mag;
 
-                // 【ver1.32で全面的に見直し】保存前にJスタンプの画面上に表示されている
-                // 矢印と、保存後のPDFに描画される矢印が「見た目上まったく同じ」に
-                // なるよう、画面表示側（addDotDOM()/buildArrowMarkup()）とまったく
-                // 同じ比率で計算し直した。
+                // 【ver1.33で確定（ver1.18〜1.32の経緯はコード内・SPEC.md参照）】
+                // 保存前にJスタンプの画面上に表示されている矢印と、保存後のPDFに
+                // 描画される矢印が「見た目上まったく同じ」になるよう、画面表示側
+                // （addDotDOM()/buildArrowMarkup()）とまったく同じ比率で計算し直した。
                 //
                 // 【ver1.25までの実装で起きていた問題】
-                // 円のボーダー（枠線）の描き方が、画面表示側とPDF出力側で異なっていた。
-                //   ・画面表示側：div要素にCSSの`border`を指定しており、
-                //     box-sizing:border-box（全称ルールで指定済み）のため、
-                //     ボーダーは要素の**内側**に描かれる。つまり半径sz/2の地点が
-                //     「円の見た目上の一番外側」そのものであり、矢印もその地点
-                //     （radius=sz/2）から描き始めれば、何にも隠れることなく
-                //     全長がそのまま見える。
-                //   ・PDF出力側：pdf-libの`drawCircle({size:r, borderWidth:...})`は、
-                //     半径rの円周**を中心線として**ボーダーをストロークするため、
-                //     ボーダーは内側にr*0.07・外側にr*0.07はみ出す（円の見た目上の
-                //     一番外側は`r`ではなく`r*1.07`になる）。矢印の始点を画面表示側と
-                //     同じ考え方で単純に「半径r地点」から描いていたため、実際には
-                //     矢印の始点付近（rから1.07rまでの区間）がボーダーの内側に隠れて
-                //     しまっていた。ver1.18でユーザー依頼により矢印全体の長さを半分に
-                //     縮めた際、この「ボーダーに隠れて見えない固定の長さ」が全体に
-                //     占める割合が相対的に大きくなり、結果として保存後のPDFを開き直す
-                //     と矢印がほとんど点のようにしか見えない状態になっていた
-                //     （ver1.25時点では矢じりと軸の比率だけを揃えたが、この
-                //     ボーダーの隠れ分は未対応のまま残っていた）。
+                // 円のボーダー（枠線）の描き方が、画面表示側とPDF出力側で異なって
+                // いた（詳細は上の円描画部分のコメントを参照）。矢印の始点を単純に
+                // 「半径r地点」から描いていたため、実際には矢印の始点付近が円の
+                // ボーダーの内側に隠れてしまっており、ver1.18でユーザー依頼により
+                // 矢印全体の長さを半分に縮めた際、この「隠れて見えない固定の長さ」
+                // が全体に占める割合が相対的に大きくなり、結果として保存後のPDFを
+                // 開き直すと矢印がほとんど点のようにしか見えない状態になっていた
+                // （ver1.25時点では矢じりと軸の比率だけを揃えたが、この隠れ分は
+                // 未対応のまま残っていた）。ver1.32では矢印の始点だけを`r*1.07`へ
+                // ずらす対症療法で対応したが、円自体が画面表示より一回り大きく
+                // 見えるズレ自体は解消されておらず、根本原因への対応としては
+                // 不完全だった。
                 //
-                // 【ver1.32の対応】
-                // 矢印の始点を、画面表示側と同じ「円の見た目上の一番外側」に揃えるため、
-                // ボーダーの外周（r*1.07、ボーダー中心r±半幅r*0.07の外側）を始点にした。
-                // その上で、矢印の長さ・矢じりの大きさ・線の太さは、画面表示側の
-                // 計算式（sz＝画面上の円の直径、radius＝sz/2）とまったく同じ比率
-                // （pdfSizeから導かれる半径rを画面側のradiusと同じ意味の値として扱う）
-                // で算出する：
+                // 【ver1.33の対応】
+                // 上の円描画部分で、ボーダー込みの見た目上の円の半径が画面表示側と
+                // 同じく必ず`r`になるよう円の描画自体を修正した。これにより、
+                // 矢印側は画面表示側の計算式（sz＝画面上の円の直径、radius＝sz/2）と
+                // 完全に同じ比率をそのまま`r`基準で使うだけで、見た目が一致する：
                 //   画面表示側 addDotDOM(): arrowLen = sz*0.425 = radius*0.85
                 //   → PDF出力側　　　　　　: edgeLen  = r*0.85（同じ0.85倍）
+                //   画面表示側 buildArrowMarkup(): 矢印は radius（＝円の見た目上の
+                //     一番外側）の地点から描き始める
+                //   → PDF出力側　　　　　　　　　: 矢印は r（＝円の見た目上の
+                //     一番外側、上の修正により一致）の地点から描き始める
                 //   画面表示側 buildArrowMarkup(): headLen = max(4, length*0.42)
                 //   → PDF出力側　　　　　　　　　: headLen = max(r*0.05, edgeLen*0.42)（同じ0.42倍）
                 //   画面表示側 addDotDOM(): arrowStrokeW = max(1.2, sz*0.09) = max(1.2, radius*0.18)
                 //   → PDF出力側　　　　　　: lineThickness = max(0.6, r*0.18)（同じ0.18倍）
-                // これにより、保存前の画面表示と保存後のPDFとで矢印の見た目（始点位置・
-                // 長さ・矢じりの大きさ・太さの比率）が一致する。
-                const borderOuterR = r * 1.07; // 円のボーダー外周（見た目上の円の一番外側）
+                // 「見た目上の円の一番外側」を両者とも常に`r`（画面表示側の
+                // `radius`に相当する変数）に揃えたことで、円描画・矢印描画いずれも
+                // 追加の補正係数（ボーダーはみ出し分の考慮）なしで、画面表示側と
+                // 完全に同じ計算式をそのまま使えるようになっている。
                 const edgeLen = r * 0.85;      // 円の縁から矢印の先端までの実長（画面表示側と同じ比率）
                 const headLen = Math.max(r * 0.05, edgeLen * 0.42);
-                const startVx = cvx + uX * borderOuterR,             startVy = cvy + uY * borderOuterR;
-                const tipVx   = cvx + uX * (borderOuterR + edgeLen), tipVy   = cvy + uY * (borderOuterR + edgeLen);
+                const startVx = cvx + uX * r,             startVy = cvy + uY * r;
+                const tipVx   = cvx + uX * (r + edgeLen), tipVy   = cvy + uY * (r + edgeLen);
                 const revX = -uX, revY = -uY;
                 // ver1.13：ベクトル回転の計算はbuildArrowMarkup()と共通の
                 // rotateVectorDeg()に統一した（以前はここにほぼ同じ内容の
